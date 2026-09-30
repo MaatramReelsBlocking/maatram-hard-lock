@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Maatram Hard Lock</string>
+    <string name="shield_label">Maatram Focus Shield</string>
+    <string name="shield_desc">Blocks distracting apps while a Maatram Hard Lock is running. Turns off blocking automatically when the lock ends.</string>
+</resources>

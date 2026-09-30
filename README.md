@@ -1,0 +1,60 @@
+# Maatram Hard Lock (Android, Kotlin)
+
+Standalone focus-lock app. Start a Hard Lock for a set time; distracting apps
+are blocked and the lock can't be cancelled — it ends on its own when the timer
+runs out. Pure Kotlin + Jetpack Compose, no login, no server, works offline.
+
+## How the lock holds (Accessibility + Device Admin)
+
+- **Focus Shield** (an AccessibilityService) watches which app comes to the
+  foreground. During a lock, a blocked app snaps straight to the home screen and
+  a small "Locked" pill shows. Going home is instant — no lag.
+- While locked, the **Settings app and the app-installer screens are also
+  bounced**, so the shield can't be turned off, the app can't be force-stopped,
+  and it can't be uninstalled.
+- **Device Admin** (optional but recommended) makes Android refuse to uninstall
+  the app until it's deactivated — and that screen is in Settings, which is
+  guarded while locked.
+- **The lock is time-based and survives reboots and crashes.** It always ends on
+  its own (max 90 min).
+
+Blocked: Instagram, YouTube, TikTok, Snapchat, X, Facebook, Reddit, Threads,
+YouTube Music. Calls, SMS, maps and camera always work. WhatsApp is allowed by
+default.
+
+## Get the APK (GitHub Actions — no Android Studio)
+
+1. Push this folder to a GitHub repo (branch `main`).
+2. Open the **Actions** tab → the **Build APK** run → download the
+   **maatram-hardlock-debug** artifact → install the APK on the phone.
+
+The debug APK needs no setup. For a proper release-signed APK (recommended for
+sharing, avoids Play Protect warnings), add these repo **Secrets** and the same
+workflow builds a signed one:
+
+`KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`
+
+Make a keystore with:
+```
+keytool -genkey -v -keystore release.keystore -alias maatram \
+  -keyalg RSA -keysize 2048 -validity 10000
+base64 -w0 release.keystore   # paste output into KEYSTORE_BASE64
+```
+
+## On the phone (one time)
+
+1. Install the APK (allow install from unknown sources).
+2. Android 13+: Settings → Apps → Maatram Hard Lock → ⋮ → **Allow restricted
+   settings** (needed before accessibility can be turned on for a sideloaded app).
+3. Open the app → tap **Turn on Shield** → enable *Maatram Focus Shield*.
+4. Tap **Turn on protection** to add Device Admin (recommended).
+5. Pick a duration and **Start Hard Lock**.
+
+## Known limits (honest)
+
+- **Safe mode** (reboot holding power) can turn the shield off — but blocked apps
+  are also disabled in safe mode, so it takes two reboots to actually get around.
+- A **hardware factory reset** from recovery wipes the phone and clears the lock.
+  No app can stop that.
+- Full lock-down that even safe mode can't touch needs **Device Owner** mode
+  (adb setup) — not used here by choice.
