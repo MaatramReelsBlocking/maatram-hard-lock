@@ -85,4 +85,11 @@ class BlockerService : AccessibilityService() {
     }
 
     override fun onInterrupt() {}
+
+    // Service can be switched off while the pill is showing; don't leak the window.
+    override fun onDestroy() {
+        ui.removeCallbacksAndMessages(null)
+        hidePill.run()
+        super.onDestroy()
+    }
 }
