@@ -24,18 +24,18 @@ class BlockerService : AccessibilityService() {
     override fun onServiceConnected() {
         // Configure programmatically too — some OEMs ignore the XML.
         serviceInfo = AccessibilityServiceInfo().apply {
-            eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
-                    AccessibilityEvent.TYPE_WINDOWS_CHANGED
+            // App switches only; TYPE_WINDOWS_CHANGED fired constantly for no gain.
+            eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
             feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
             flags = AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS
-            notificationTimeout = 50L
+            notificationTimeout = 0L
         }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (!LockManager.isLocked(this)) return     // cheapest check first
         val pkg = event?.packageName?.toString() ?: return
         if (pkg == packageName) return
-        if (!LockManager.isLocked(this)) return
         if (!LockManager.isBlocked(this, pkg)) return
 
         // Instant bounce home.
