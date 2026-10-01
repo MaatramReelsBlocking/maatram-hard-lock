@@ -63,23 +63,25 @@ private fun adminOn(ctx: Context): Boolean {
 private fun App() {
     val ctx = LocalContext.current
     var tick by remember { mutableStateOf(0L) }
+    var resumes by remember { mutableStateOf(0) }
 
-    // Re-check permissions/lock whenever the screen resumes, and tick every second.
+    // Re-check permissions/lock whenever the screen resumes.
     val owner = LocalLifecycleOwner.current
     DisposableEffect(owner) {
-        val obs = LifecycleEventObserver { _, e -> if (e == Lifecycle.Event.ON_RESUME) tick++ }
+        val obs = LifecycleEventObserver { _, e -> if (e == Lifecycle.Event.ON_RESUME) { tick++; resumes++ } }
         owner.lifecycle.addObserver(obs)
         onDispose { owner.lifecycle.removeObserver(obs) }
     }
-    LaunchedEffect(Unit) { while (true) { delay(1000); tick++ } }
-
     val locked = remember(tick) { LockManager.isLocked(ctx) }
-    val shield = remember(tick) { accessibilityOn(ctx) }
-    val admin = remember(tick) { adminOn(ctx) }
+    // Permissions only change while we're in Settings, so check on resume, not every second.
+    val shield = remember(resumes) { accessibilityOn(ctx) }
+    val admin = remember(resumes) { adminOn(ctx) }
+    // Tick every second only while locked (countdown); idle setup screen does no work.
+    LaunchedEffect(locked) { while (locked) { delay(1000); tick++ } }
 
     MaterialTheme(colorScheme = darkColorScheme(primary = ACCENT, background = BG)) {
         Surface(Modifier.fillMaxSize(), color = BG) {
-            if (locked) LockedScreen(ctx) else SetupScreen(ctx, shield, admin)
+            if (locked) LockedScreen(ctx) else SetupScreen(ctx, shield, admin) { tick++ }
         }
     }
 }
@@ -116,7 +118,7 @@ private fun LockedScreen(ctx: Context) {
 }
 
 @Composable
-private fun SetupScreen(ctx: Context, shield: Boolean, admin: Boolean) {
+private fun SetupScreen(ctx: Context, shield: Boolean, admin: Boolean, onStarted: () -> Unit) {
     var minutes by remember { mutableStateOf(25) }
     val ready = shield
 
@@ -161,7 +163,8 @@ private fun SetupScreen(ctx: Context, shield: Boolean, admin: Boolean) {
                     DevicePolicyManager.EXTRA_ADD_EXPLANATION,
                     "Keeps Maatram Hard Lock from being removed while a lock is running."
                 )
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            // No FLAG_ACTIVITY_NEW_TASK: Settings' DeviceAdminAdd silently finishes
+            // when launched as a new task, which made this button do nothing.
             ctx.startActivity(i)
         }
 
@@ -172,7 +175,7 @@ private fun SetupScreen(ctx: Context, shield: Boolean, admin: Boolean) {
 
         Spacer(Modifier.height(26.dp))
         Button(
-            onClick = { LockManager.start(ctx, minutes) },
+            onClick = { LockManager.start(ctx, minutes); onStarted() },
             enabled = ready,
             modifier = Modifier.fillMaxWidth().height(56.dp),
             shape = RoundedCornerShape(16.dp),
