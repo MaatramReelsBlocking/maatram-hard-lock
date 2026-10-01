@@ -18,6 +18,7 @@
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
+            android:excludeFromRecents="true"
             android:theme="@style/Theme.MaatramHardLock">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
