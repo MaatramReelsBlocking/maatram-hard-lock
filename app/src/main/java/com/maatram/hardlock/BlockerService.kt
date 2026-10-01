@@ -36,11 +36,19 @@ class BlockerService : AccessibilityService() {
         if (!LockManager.isLocked(this)) return     // cheapest check first
         val pkg = event?.packageName?.toString() ?: return
         if (pkg == packageName) return
-        if (!LockManager.isBlocked(this, pkg)) return
+        if (!LockManager.isBlocked(this, pkg) && !isRecents(pkg, event)) return
 
         // Instant bounce home.
         performGlobalAction(GLOBAL_ACTION_HOME)
         showPill()
+    }
+
+    // Recents "Clear all" (Xiaomi and others) kills background apps, which
+    // switches the Shield off. So while locked, the Recents screen is bounced too.
+    private fun isRecents(pkg: String, e: AccessibilityEvent?): Boolean {
+        if (pkg != "com.android.systemui" && "launcher" !in pkg && "home" !in pkg) return false
+        val hay = "${e?.className} ${e?.contentDescription} ${e?.text?.joinToString(" ")}"
+        return hay.contains("recent", ignoreCase = true)
     }
 
     private fun showPill() {
