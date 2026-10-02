@@ -16,6 +16,7 @@ object LockManager {
     private const val PREFS = "MaatramLock"
     private const val KEY_END = "lock_end"          // epoch millis, 0 = not locked
     private const val KEY_WA = "whatsapp_allowed"
+    private const val KEY_CUSTOM = "custom_blocked" // apps the user picked, on top of BLOCKED
     const val MAX_MINUTES = 90
 
     // Apps blocked while a Hard Lock is running.
@@ -59,9 +60,20 @@ object LockManager {
             .edit().putBoolean(KEY_WA, allowed).apply()
     }
 
+    /** Extra apps the user chose to lock (games, streaming, anything installed). */
+    fun customBlocked(ctx: Context): Set<String> =
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getStringSet(KEY_CUSTOM, emptySet()) ?: emptySet()
+
+    fun setCustomBlocked(ctx: Context, pkgs: Set<String>) {
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putStringSet(KEY_CUSTOM, HashSet(pkgs)).apply()
+    }
+
     fun isBlocked(ctx: Context, pkg: String): Boolean {
         if (pkg in BLOCKED) return true
         if (pkg in GUARDED) return true
+        if (pkg in customBlocked(ctx)) return true
         if (!whatsappAllowed(ctx) &&
             (pkg == "com.whatsapp" || pkg == "com.whatsapp.w4b")) return true
         return false

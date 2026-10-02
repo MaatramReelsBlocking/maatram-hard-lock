@@ -4,13 +4,18 @@ import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.provider.Settings
 import android.text.TextUtils
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -19,6 +24,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -27,7 +34,10 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.core.graphics.drawable.toBitmap
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 private val BG = Color(0xFF0B0C0B)
 private val CARD = Color(0xFF141915)
@@ -63,6 +73,7 @@ private fun App() {
     val ctx = LocalContext.current
     var tick by remember { mutableStateOf(0L) }
     var resumes by remember { mutableStateOf(0) }
+    var picking by remember { mutableStateOf(false) }
 
     // Re-check permissions/lock whenever the screen resumes.
     val owner = LocalLifecycleOwner.current
@@ -80,7 +91,11 @@ private fun App() {
 
     MaterialTheme(colorScheme = darkColorScheme(primary = ACCENT, background = BG)) {
         Surface(Modifier.fillMaxSize(), color = BG) {
-            if (locked) LockedScreen(ctx) else SetupScreen(ctx, shield, admin) { tick++ }
+            when {
+                locked -> LockedScreen(ctx)
+                picking -> AppPicker(ctx) { picking = false }
+                else -> SetupScreen(ctx, shield, admin, onPick = { picking = true }) { tick++ }
+            }
         }
     }
 }
@@ -117,7 +132,10 @@ private fun LockedScreen(ctx: Context) {
 }
 
 @Composable
-private fun SetupScreen(ctx: Context, shield: Boolean, admin: Boolean, onStarted: () -> Unit) {
+private fun SetupScreen(
+    ctx: Context, shield: Boolean, admin: Boolean,
+    onPick: () -> Unit, onStarted: () -> Unit
+) {
     var minutes by remember { mutableStateOf(25) }
     val ready = shield
 
@@ -198,6 +216,22 @@ private fun SetupScreen(ctx: Context, shield: Boolean, admin: Boolean, onStarted
             "Calls, messages, maps and the camera keep working.",
             color = DIM, fontSize = 13.sp
         )
+
+        Spacer(Modifier.height(22.dp))
+        val customCount = remember { LockManager.customBlocked(ctx).size }
+        Text("Your apps", color = INK, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+        Spacer(Modifier.height(6.dp))
+        Text(
+            if (customCount == 0) "Add games, streaming or any other app you want locked too."
+            else "$customCount more app${if (customCount == 1) "" else "s"} will also be locked.",
+            color = if (customCount == 0) DIM else ACCENT, fontSize = 13.sp, lineHeight = 18.sp
+        )
+        Spacer(Modifier.height(10.dp))
+        OutlinedButton(
+            onClick = onPick,
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = ACCENT)
+        ) { Text(if (customCount == 0) "Choose apps to lock" else "Edit chosen apps", fontWeight = FontWeight.SemiBold) }
         Spacer(Modifier.height(28.dp))
     }
 }
@@ -251,6 +285,95 @@ private fun StatusCard(
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = ACCENT)
                 ) { Text(button, fontWeight = FontWeight.SemiBold) }
+            }
+        }
+    }
+}
+
+private data class AppItem(val pkg: String, val label: String, val icon: ImageBitmap?)
+
+/** Every launchable app, minus ones already locked, this app and the phone dialer. */
+private fun loadApps(ctx: Context): List<AppItem> {
+    val pm = ctx.packageManager
+    val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+    val dialer = pm.resolveActivity(Intent(Intent.ACTION_DIAL), PackageManager.MATCH_DEFAULT_ONLY)
+        ?.activityInfo?.packageName
+    val skip = LockManager.BLOCKED + LockManager.GUARDED + setOfNotNull(ctx.packageName, dialer)
+    return pm.queryIntentActivities(launcher, 0)
+        .distinctBy { it.activityInfo.packageName }
+        .filter { it.activityInfo.packageName !in skip }
+        .map { ri ->
+            val icon = try { ri.loadIcon(pm).toBitmap(96, 96).asImageBitmap() } catch (_: Exception) { null }
+            AppItem(ri.activityInfo.packageName, ri.loadLabel(pm).toString(), icon)
+        }
+        .sortedBy { it.label.lowercase() }
+}
+
+@Composable
+private fun AppPicker(ctx: Context, onDone: () -> Unit) {
+    val chosen = remember { mutableStateListOf<String>().apply { addAll(LockManager.customBlocked(ctx)) } }
+    var query by remember { mutableStateOf("") }
+    val apps by produceState<List<AppItem>?>(initialValue = null) {
+        value = withContext(Dispatchers.IO) { loadApps(ctx) }
+    }
+    val save = { LockManager.setCustomBlocked(ctx, chosen.toSet()); onDone() }
+    BackHandler { save() }
+
+    Column(Modifier.fillMaxSize().padding(horizontal = 18.dp)) {
+        Spacer(Modifier.height(18.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Choose apps to lock", color = INK, fontWeight = FontWeight.Bold, fontSize = 22.sp)
+                Text(
+                    "${chosen.size} selected · locked with Instagram, YouTube and the rest",
+                    color = DIM, fontSize = 13.sp
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            Button(
+                onClick = save,
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = ACCENT, contentColor = BG)
+            ) { Text("Done", fontWeight = FontWeight.Bold) }
+        }
+        Spacer(Modifier.height(12.dp))
+        OutlinedTextField(
+            value = query,
+            onValueChange = { query = it },
+            placeholder = { Text("Search apps") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(8.dp))
+        val list = apps
+        if (list == null) {
+            Box(Modifier.fillMaxWidth().padding(40.dp), Alignment.Center) {
+                CircularProgressIndicator(color = ACCENT)
+            }
+        } else {
+            val q = query.trim()
+            val shown = if (q.isEmpty()) list else list.filter { it.label.contains(q, ignoreCase = true) }
+            LazyColumn(Modifier.fillMaxSize()) {
+                items(shown, key = { it.pkg }) { app ->
+                    val on = app.pkg in chosen
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .clickable { if (on) chosen.remove(app.pkg) else chosen.add(app.pkg) }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val ic = app.icon
+                        if (ic != null) Image(bitmap = ic, contentDescription = null, modifier = Modifier.size(40.dp))
+                        else Spacer(Modifier.size(40.dp))
+                        Spacer(Modifier.width(14.dp))
+                        Text(app.label, color = INK, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                        Checkbox(
+                            checked = on,
+                            onCheckedChange = { if (it) chosen.add(app.pkg) else chosen.remove(app.pkg) },
+                            colors = CheckboxDefaults.colors(checkedColor = ACCENT, checkmarkColor = BG)
+                        )
+                    }
+                }
             }
         }
     }
