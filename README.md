@@ -18,9 +18,9 @@ runs out. Pure Kotlin + Jetpack Compose, no login, no server, works offline.
 - **The lock is time-based and survives reboots and crashes.** It always ends on
   its own (max 90 min).
 
-Blocked: Instagram, YouTube, TikTok, Snapchat, X, Facebook, Reddit, Threads,
-YouTube Music. Calls, SMS, maps and camera always work. WhatsApp is allowed by
-default.
+Only the apps you pick are blocked. Instagram, YouTube, TikTok, Snapchat, X,
+Facebook, Reddit and Threads are ticked by default, and you can untick any of
+them. Every app you don't pick keeps working.
 
 ## Get the APK (GitHub Actions — no Android Studio)
 
@@ -48,7 +48,10 @@ base64 -w0 release.keystore   # paste output into KEYSTORE_BASE64
    settings** (needed before accessibility can be turned on for a sideloaded app).
 3. Open the app → tap **Turn on Shield** → enable *Maatram Focus Shield*.
 4. Tap **Turn on protection** to add Device Admin (recommended).
-5. Pick a duration and **Start Hard Lock**.
+5. Tap **Allow background running**. On Xiaomi/Redmi/POCO, also tap **Open
+   Autostart settings** and turn Maatram Hard Lock on. Without this, "Clear all"
+   in Recents kills the Shield and ends the lock early.
+6. Tap **Choose apps to lock**, pick a duration and **Start Hard Lock**.
 
 ## Known limits (honest)
 
