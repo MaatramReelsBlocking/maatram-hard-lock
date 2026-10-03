@@ -54,7 +54,14 @@ private val DIM = Color(0xFF8FA39A)
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Motivation.handleIntent(this, intent)
+        Motivation.scheduleNext(this)
         setContent { App() }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        Motivation.handleIntent(this, intent)
     }
 }
 
@@ -287,6 +294,9 @@ private fun SetupScreen(
         }
 
         Spacer(Modifier.height(22.dp))
+        MotivationCard(ctx)
+
+        Spacer(Modifier.height(22.dp))
         Text("Apps to lock", color = INK, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
         Spacer(Modifier.height(6.dp))
         Text(
@@ -301,6 +311,41 @@ private fun SetupScreen(
             colors = ButtonDefaults.outlinedButtonColors(contentColor = ACCENT)
         ) { Text("Choose apps to lock", fontWeight = FontWeight.SemiBold) }
         Spacer(Modifier.height(28.dp))
+    }
+}
+
+@Composable
+private fun MotivationCard(ctx: Context) {
+    var on by remember { mutableStateOf(Motivation.isOn(ctx)) }
+    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (!granted) { on = false; Motivation.setOn(ctx, false) }
+    }
+    // Reminders are on by default: ask for notification permission once it's needed (Android 13+).
+    LaunchedEffect(Unit) {
+        if (on && Build.VERSION.SDK_INT >= 33 &&
+            ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) ask.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+    Surface(color = CARD, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Motivation reminders", color = INK, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "A short line 3 times a day with a one-tap ${Motivation.QUICK_MINUTES}-minute Hard Lock. Skipped while a lock is running.",
+                    color = DIM, fontSize = 13.sp, lineHeight = 18.sp
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Switch(
+                checked = on,
+                onCheckedChange = {
+                    on = it; Motivation.setOn(ctx, it)
+                    if (it && Build.VERSION.SDK_INT >= 33) ask.launch(Manifest.permission.POST_NOTIFICATIONS)
+                },
+                colors = SwitchDefaults.colors(checkedTrackColor = ACCENT, checkedThumbColor = BG)
+            )
+        }
     }
 }
 
