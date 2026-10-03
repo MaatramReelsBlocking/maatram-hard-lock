@@ -5,7 +5,9 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Bundle
+import android.os.PowerManager
 import android.provider.Settings
 import android.text.TextUtils
 import androidx.activity.ComponentActivity
@@ -68,6 +70,17 @@ private fun adminOn(ctx: Context): Boolean {
     return dpm.isAdminActive(ComponentName(ctx, AdminReceiver::class.java))
 }
 
+private fun batteryFree(ctx: Context): Boolean =
+    (ctx.getSystemService(Context.POWER_SERVICE) as PowerManager)
+        .isIgnoringBatteryOptimizations(ctx.packageName)
+
+// Xiaomi/Redmi/POCO: without Autostart, "Clear all" in Recents force-stops the
+// app and Android never restarts the Shield, so the lock silently dies.
+private fun autostartIntent(ctx: Context): Intent? =
+    Intent().setComponent(
+        ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity")
+    ).takeIf { it.resolveActivity(ctx.packageManager) != null }
+
 @Composable
 private fun App() {
     val ctx = LocalContext.current
@@ -86,6 +99,7 @@ private fun App() {
     // Permissions only change while we're in Settings, so check on resume, not every second.
     val shield = remember(resumes) { accessibilityOn(ctx) }
     val admin = remember(resumes) { adminOn(ctx) }
+    val battery = remember(resumes) { batteryFree(ctx) }
     // Tick every second only while locked (countdown); idle setup screen does no work.
     LaunchedEffect(locked) { while (locked) { delay(1000); tick++ } }
 
@@ -94,7 +108,7 @@ private fun App() {
             when {
                 locked -> LockedScreen(ctx)
                 picking -> AppPicker(ctx) { picking = false }
-                else -> SetupScreen(ctx, shield, admin, onPick = { picking = true }) { tick++ }
+                else -> SetupScreen(ctx, shield, admin, battery, onPick = { picking = true }) { tick++ }
             }
         }
     }
@@ -133,11 +147,15 @@ private fun LockedScreen(ctx: Context) {
 
 @Composable
 private fun SetupScreen(
-    ctx: Context, shield: Boolean, admin: Boolean,
+    ctx: Context, shield: Boolean, admin: Boolean, battery: Boolean,
     onPick: () -> Unit, onStarted: () -> Unit
 ) {
     var minutes by remember { mutableStateOf(25) }
-    val ready = shield
+    // Count only installed apps (defaults include apps the phone may not have).
+    val lockedCount = remember {
+        LockManager.lockedApps(ctx).count { ctx.packageManager.getLaunchIntentForPackage(it) != null }
+    }
+    val ready = shield && lockedCount > 0
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(22.dp)
@@ -185,6 +203,33 @@ private fun SetupScreen(
             ctx.startActivity(i)
         }
 
+        Spacer(Modifier.height(12.dp))
+
+        // Step 3 — keep the Shield alive through Recents "Clear all"
+        val autostart = autostartIntent(ctx)
+        StatusCard(
+            title = "3 · Keep running (recommended)",
+            on = battery,
+            onText = if (autostart != null) "Battery: no restrictions. Also allow Autostart below."
+                     else "On — Clear all can't switch the lock off",
+            offText = "Off — Clear all in Recents can switch the lock off",
+            button = when {
+                !battery -> "Allow background running"
+                autostart != null -> "Open Autostart settings"
+                else -> null
+            }
+        ) {
+            val i = if (!battery) Intent(
+                Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                Uri.parse("package:${ctx.packageName}")
+            ) else autostart
+            try { i?.let { ctx.startActivity(it) } } catch (_: Exception) {
+                ctx.startActivity(
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${ctx.packageName}"))
+                )
+            }
+        }
+
         Spacer(Modifier.height(22.dp))
         Text("Lock duration", color = INK, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
         Spacer(Modifier.height(12.dp))
@@ -199,39 +244,29 @@ private fun SetupScreen(
             colors = ButtonDefaults.buttonColors(containerColor = ACCENT, contentColor = BG)
         ) {
             Text(
-                if (ready) "Start Hard Lock · $minutes min" else "Turn on Shield first",
+                when {
+                    !shield -> "Turn on Shield first"
+                    lockedCount == 0 -> "Choose apps to lock first"
+                    else -> "Start Hard Lock · $minutes min"
+                },
                 fontWeight = FontWeight.Bold, fontSize = 16.sp
             )
         }
 
         Spacer(Modifier.height(22.dp))
-        Text("Blocked while locked", color = INK, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-        Spacer(Modifier.height(8.dp))
-        Text(
-            "Instagram · YouTube · TikTok · Snapchat · X · Facebook · Reddit · Threads",
-            color = DIM, fontSize = 14.sp, lineHeight = 20.sp
-        )
+        Text("Apps to lock", color = INK, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
         Spacer(Modifier.height(6.dp))
         Text(
-            "Calls, messages, maps and the camera keep working.",
-            color = DIM, fontSize = 13.sp
-        )
-
-        Spacer(Modifier.height(22.dp))
-        val customCount = remember { LockManager.customBlocked(ctx).size }
-        Text("Your apps", color = INK, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-        Spacer(Modifier.height(6.dp))
-        Text(
-            if (customCount == 0) "Add games, streaming or any other app you want locked too."
-            else "$customCount more app${if (customCount == 1) "" else "s"} will also be locked.",
-            color = if (customCount == 0) DIM else ACCENT, fontSize = 13.sp, lineHeight = 18.sp
+            if (lockedCount == 0) "No apps chosen yet. Only the apps you pick get locked."
+            else "$lockedCount app${if (lockedCount == 1) "" else "s"} will be locked. Everything else keeps working.",
+            color = if (lockedCount == 0) DIM else ACCENT, fontSize = 13.sp, lineHeight = 18.sp
         )
         Spacer(Modifier.height(10.dp))
         OutlinedButton(
             onClick = onPick,
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.outlinedButtonColors(contentColor = ACCENT)
-        ) { Text(if (customCount == 0) "Choose apps to lock" else "Edit chosen apps", fontWeight = FontWeight.SemiBold) }
+        ) { Text("Choose apps to lock", fontWeight = FontWeight.SemiBold) }
         Spacer(Modifier.height(28.dp))
     }
 }
@@ -292,13 +327,13 @@ private fun StatusCard(
 
 private data class AppItem(val pkg: String, val label: String, val icon: ImageBitmap?)
 
-/** Every launchable app, minus ones already locked, this app and the phone dialer. */
+/** Every launchable app, minus this app, the phone dialer and the always-guarded Settings. */
 private fun loadApps(ctx: Context): List<AppItem> {
     val pm = ctx.packageManager
     val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
     val dialer = pm.resolveActivity(Intent(Intent.ACTION_DIAL), PackageManager.MATCH_DEFAULT_ONLY)
         ?.activityInfo?.packageName
-    val skip = LockManager.BLOCKED + LockManager.GUARDED + setOfNotNull(ctx.packageName, dialer)
+    val skip = LockManager.GUARDED + setOfNotNull(ctx.packageName, dialer)
     return pm.queryIntentActivities(launcher, 0)
         .distinctBy { it.activityInfo.packageName }
         .filter { it.activityInfo.packageName !in skip }
@@ -311,12 +346,17 @@ private fun loadApps(ctx: Context): List<AppItem> {
 
 @Composable
 private fun AppPicker(ctx: Context, onDone: () -> Unit) {
-    val chosen = remember { mutableStateListOf<String>().apply { addAll(LockManager.customBlocked(ctx)) } }
+    val chosen = remember { mutableStateListOf<String>().apply { addAll(LockManager.lockedApps(ctx)) } }
     var query by remember { mutableStateOf("") }
     val apps by produceState<List<AppItem>?>(initialValue = null) {
         value = withContext(Dispatchers.IO) { loadApps(ctx) }
     }
-    val save = { LockManager.setCustomBlocked(ctx, chosen.toSet()); onDone() }
+    // Keep only installed apps, so the count matches what's on the phone.
+    val save = {
+        val installed = apps?.map { it.pkg }?.toSet()
+        LockManager.setLockedApps(ctx, if (installed == null) chosen.toSet() else chosen.filter { it in installed }.toSet())
+        onDone()
+    }
     BackHandler { save() }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 18.dp)) {
@@ -325,7 +365,7 @@ private fun AppPicker(ctx: Context, onDone: () -> Unit) {
             Column(Modifier.weight(1f)) {
                 Text("Choose apps to lock", color = INK, fontWeight = FontWeight.Bold, fontSize = 22.sp)
                 Text(
-                    "${chosen.size} selected · locked with Instagram, YouTube and the rest",
+                    "Only the apps you tick get locked",
                     color = DIM, fontSize = 13.sp
                 )
             }
