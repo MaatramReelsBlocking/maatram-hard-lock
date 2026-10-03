@@ -1,17 +1,21 @@
 package com.maatram.hardlock
 
+import android.Manifest
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
 import android.text.TextUtils
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
@@ -106,7 +110,7 @@ private fun App() {
     MaterialTheme(colorScheme = darkColorScheme(primary = ACCENT, background = BG)) {
         Surface(Modifier.fillMaxSize(), color = BG) {
             when {
-                locked -> LockedScreen(ctx)
+                locked -> LockedScreen(ctx, shield)
                 picking -> AppPicker(ctx) { picking = false }
                 else -> SetupScreen(ctx, shield, admin, battery, onPick = { picking = true }) { tick++ }
             }
@@ -115,7 +119,7 @@ private fun App() {
 }
 
 @Composable
-private fun LockedScreen(ctx: Context) {
+private fun LockedScreen(ctx: Context, shield: Boolean) {
     val leftMs = LockManager.remainingMs(ctx)
     val total = (leftMs + 59_999L) / 60_000L
     val mm = leftMs / 60_000L
@@ -142,6 +146,21 @@ private fun LockedScreen(ctx: Context) {
             color = DIM, fontSize = 14.sp, textAlign = TextAlign.Center,
             lineHeight = 20.sp
         )
+        // Force-stopping the app (e.g. "Clear all" on some phones) switches the
+        // Shield off in Android itself. Say so instead of pretending to be locked.
+        if (!shield) {
+            Spacer(Modifier.height(24.dp))
+            Text(
+                "The Shield was switched off, so nothing is blocked right now. Turn it back on.",
+                color = Color(0xFFE57373), fontSize = 14.sp, textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(12.dp))
+            OutlinedButton(onClick = {
+                ctx.startActivity(
+                    Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            }) { Text("Turn on Shield", color = ACCENT) }
+        }
     }
 }
 
@@ -155,7 +174,13 @@ private fun SetupScreen(
     val lockedCount = remember {
         LockManager.lockedApps(ctx).count { ctx.packageManager.getLaunchIntentForPackage(it) != null }
     }
-    val ready = shield && lockedCount > 0
+    // Xiaomi: Autostart can't be read back, so remember that the user opened it.
+    val autostart = remember { autostartIntent(ctx) }
+    val prefs = remember { ctx.getSharedPreferences("MaatramLock", Context.MODE_PRIVATE) }
+    var autostartDone by remember { mutableStateOf(prefs.getBoolean("autostart_opened", false)) }
+    val keepRunning = battery && (autostart == null || autostartDone)
+    // No lock until the Shield can survive "Clear all"; otherwise the lock silently dies.
+    val ready = shield && keepRunning && lockedCount > 0
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(22.dp)
@@ -206,16 +231,15 @@ private fun SetupScreen(
         Spacer(Modifier.height(12.dp))
 
         // Step 3 — keep the Shield alive through Recents "Clear all"
-        val autostart = autostartIntent(ctx)
         StatusCard(
-            title = "3 · Keep running (recommended)",
-            on = battery,
-            onText = if (autostart != null) "Battery: no restrictions. Also allow Autostart below."
-                     else "On — Clear all can't switch the lock off",
-            offText = "Off — Clear all in Recents can switch the lock off",
+            title = "3 · Keep running (required)",
+            on = keepRunning,
+            onText = "On — also lock this app in Recents (hold its card, tap the lock)",
+            offText = if (!battery) "Off — Clear all in Recents can switch the lock off"
+                      else "One more step — turn on Autostart for Maatram Hard Lock",
             button = when {
                 !battery -> "Allow background running"
-                autostart != null -> "Open Autostart settings"
+                !keepRunning -> "Open Autostart settings"
                 else -> null
             }
         ) {
@@ -223,7 +247,10 @@ private fun SetupScreen(
                 Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
                 Uri.parse("package:${ctx.packageName}")
             ) else autostart
-            try { i?.let { ctx.startActivity(it) } } catch (_: Exception) {
+            try {
+                i?.let { ctx.startActivity(it) }
+                if (battery) { prefs.edit().putBoolean("autostart_opened", true).apply(); autostartDone = true }
+            } catch (_: Exception) {
                 ctx.startActivity(
                     Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${ctx.packageName}"))
                 )
@@ -235,9 +262,14 @@ private fun SetupScreen(
         Spacer(Modifier.height(12.dp))
         DurationChips(minutes) { minutes = it }
 
+        // Android 13+: allow the "Hard Lock is on" notification that keeps the Shield alive.
+        val askNotify = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
         Spacer(Modifier.height(26.dp))
         Button(
-            onClick = { LockManager.start(ctx, minutes); onStarted() },
+            onClick = {
+                if (Build.VERSION.SDK_INT >= 33) askNotify.launch(Manifest.permission.POST_NOTIFICATIONS)
+                LockManager.start(ctx, minutes); onStarted()
+            },
             enabled = ready,
             modifier = Modifier.fillMaxWidth().height(56.dp),
             shape = RoundedCornerShape(16.dp),
@@ -246,6 +278,7 @@ private fun SetupScreen(
             Text(
                 when {
                     !shield -> "Turn on Shield first"
+                    !keepRunning -> "Finish step 3 first"
                     lockedCount == 0 -> "Choose apps to lock first"
                     else -> "Start Hard Lock · $minutes min"
                 },

@@ -8,6 +8,10 @@
     <!-- Lets the app ask to be excluded from battery killing, so Recents
          "Clear all" can't stop the Shield mid-lock. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Foreground notification while a lock runs, so "Clear all" leaves the Shield alive. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Lets the app list launchable apps so the user can pick which ones to lock
          (Android 11+ package visibility). No QUERY_ALL_PACKAGES needed. -->
@@ -30,7 +34,6 @@
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
-            android:excludeFromRecents="true"
             android:theme="@style/Theme.MaatramHardLock">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -43,7 +46,11 @@
             android:name=".BlockerService"
             android:exported="false"
             android:label="@string/shield_label"
+            android:foregroundServiceType="specialUse"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps the user's focus lock running until its timer ends" />
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />
             </intent-filter>
