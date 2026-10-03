@@ -50,7 +50,8 @@ base64 -w0 release.keystore   # paste output into KEYSTORE_BASE64
 4. Tap **Turn on protection** to add Device Admin (recommended).
 5. Tap **Allow background running**. On Xiaomi/Redmi/POCO, also tap **Open
    Autostart settings** and turn Maatram Hard Lock on. Without this, "Clear all"
-   in Recents kills the Shield and ends the lock early.
+   in Recents kills the Shield and ends the lock early. Also open Recents, hold the
+   Maatram Hard Lock card and tap the lock icon so "Clear all" skips it.
 6. Tap **Choose apps to lock**, pick a duration and **Start Hard Lock**.
 
 ## Known limits (honest)
