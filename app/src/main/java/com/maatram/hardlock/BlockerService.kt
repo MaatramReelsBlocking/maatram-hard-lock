@@ -2,7 +2,12 @@ package com.maatram.hardlock
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
@@ -11,15 +16,17 @@ import android.view.accessibility.AccessibilityEvent
 import android.widget.TextView
 
 /**
- * The blocker. On every window change, if a lock is running and the foreground
- * app is on the block/guard list, it snaps home immediately and shows a small
- * "Locked" pill. Going home is instant, so there is no perceptible lag.
+ * The blocker. On every app switch, if a lock is running and the foreground app
+ * is one the user picked (or Settings/installer), it snaps home and shows a
+ * small pill naming the app. While a lock runs it also holds a foreground
+ * notification, so Recents "Clear all" treats it as in use and leaves it alone.
  */
 class BlockerService : AccessibilityService() {
 
     private val ui = Handler(Looper.getMainLooper())
     private var pill: TextView? = null
     private var lastPillAt = 0L
+    private var foreground = false
 
     override fun onServiceConnected() {
         // Configure programmatically too — some OEMs ignore the XML.
@@ -30,38 +37,69 @@ class BlockerService : AccessibilityService() {
             flags = AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS
             notificationTimeout = 0L
         }
+        keepAlive(LockManager.isLocked(this))
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (!LockManager.isLocked(this)) return     // cheapest check first
+        val locked = LockManager.isLocked(this)
+        keepAlive(locked)
+        if (!locked) return
         val pkg = event?.packageName?.toString() ?: return
-        if (pkg == packageName) return
-        if (!LockManager.isBlocked(this, pkg) && !isRecents(pkg, event)) return
+        // Only the exact app that came to the front. No launcher/Recents guessing:
+        // on Xiaomi the launcher runs app-open animations, which looked like
+        // "Recents" and made every app launch bounce.
+        if (pkg == packageName || !LockManager.isBlocked(this, pkg)) return
 
-        // Instant bounce home.
         performGlobalAction(GLOBAL_ACTION_HOME)
-        showPill()
+        showPill(pkg)
     }
 
-    // Recents "Clear all" (Xiaomi and others) kills background apps, which
-    // switches the Shield off. So while locked, the Recents screen is bounced too.
-    private fun isRecents(pkg: String, e: AccessibilityEvent?): Boolean {
-        if (pkg != "com.android.systemui" && "launcher" !in pkg && "home" !in pkg) return false
-        val hay = "${e?.className} ${e?.contentDescription} ${e?.text?.joinToString(" ")}"
-        return hay.contains("recent", ignoreCase = true)
+    /** Foreground notification while locked; dropped when the lock ends. */
+    private fun keepAlive(on: Boolean) {
+        if (on == foreground) return
+        try {
+            if (on) {
+                val nm = getSystemService(NotificationManager::class.java)
+                nm.createNotificationChannel(
+                    NotificationChannel(CHANNEL, "Hard Lock", NotificationManager.IMPORTANCE_LOW)
+                )
+                val n = Notification.Builder(this, CHANNEL)
+                    .setSmallIcon(R.drawable.ic_launcher_foreground)
+                    .setContentTitle("Hard Lock is on")
+                    .setContentText("Your chosen apps stay locked until the timer ends.")
+                    .setOngoing(true)
+                    .build()
+                if (Build.VERSION.SDK_INT >= 34) {
+                    startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+                } else {
+                    startForeground(NOTIF_ID, n)
+                }
+                // Drop the notification on time even if no app switch happens.
+                ui.removeCallbacks(endCheck)
+                ui.postDelayed(endCheck, LockManager.remainingMs(this) + 1_000L)
+            } else {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            }
+            foreground = on
+        } catch (_: Exception) { /* notification is a bonus; blocking still works */ }
     }
 
-    private fun showPill() {
+    private val endCheck = Runnable { keepAlive(LockManager.isLocked(this)) }
+
+    private fun showPill(pkg: String) {
         val now = System.currentTimeMillis()
         if (now - lastPillAt < 900L) return          // throttle, keep it cheap
         lastPillAt = now
 
+        val name = try {
+            packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0))
+        } catch (_: Exception) { pkg }
         val minsLeft = ((LockManager.remainingMs(this) + 59_999L) / 60_000L).toInt()
         ui.post {
             try {
                 val wm = getSystemService(WINDOW_SERVICE) as WindowManager
                 val tv = pill ?: TextView(this).also { pill = it }
-                tv.text = "🔒  Locked · $minsLeft min left"
+                tv.text = "🔒  $name is locked · $minsLeft min left"
                 tv.setPadding(44, 26, 44, 26)
                 tv.textSize = 15f
                 tv.setTextColor(0xFFFFFFFF.toInt())
@@ -99,5 +137,10 @@ class BlockerService : AccessibilityService() {
         ui.removeCallbacksAndMessages(null)
         hidePill.run()
         super.onDestroy()
+    }
+
+    private companion object {
+        const val CHANNEL = "hard_lock"
+        const val NOTIF_ID = 1
     }
 }
