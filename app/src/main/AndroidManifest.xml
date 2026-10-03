@@ -86,5 +86,10 @@
             android:name=".LockEndReceiver"
             android:exported="false" />
 
+        <!-- Motivation reminders: a few nudges a day to start a Hard Lock -->
+        <receiver
+            android:name=".MotivationReceiver"
+            android:exported="false" />
+
     </application>
 </manifest>
