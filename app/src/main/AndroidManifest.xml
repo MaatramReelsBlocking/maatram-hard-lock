@@ -91,5 +91,10 @@
             android:name=".MotivationReceiver"
             android:exported="false" />
 
+        <!-- Hard Lock milestones and user-scheduled locks -->
+        <receiver
+            android:name=".LockEventReceiver"
+            android:exported="false" />
+
     </application>
 </manifest>

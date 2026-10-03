@@ -132,6 +132,12 @@ class BlockerService : AccessibilityService() {
 
     override fun onInterrupt() {}
 
+    // Turned off in Accessibility settings (or by the system) while a lock runs.
+    override fun onUnbind(intent: android.content.Intent?): Boolean {
+        LockEvents.shieldOff(this)
+        return super.onUnbind(intent)
+    }
+
     // Service can be switched off while the pill is showing; don't leak the window.
     override fun onDestroy() {
         ui.removeCallbacksAndMessages(null)

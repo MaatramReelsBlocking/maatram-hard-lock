@@ -67,13 +67,27 @@ object LockManager {
     fun isBlocked(ctx: Context, pkg: String): Boolean =
         pkg in GUARDED || pkg in lockedApps(ctx)
 
-    /** Starts a lock for [minutes] (clamped to 1..MAX_MINUTES) and arms the end alarm. */
-    fun start(ctx: Context, minutes: Int) {
+    /** Starts a lock for [minutes] (clamped to 1..MAX_MINUTES), arms the end alarm and notifies. */
+    fun start(ctx: Context, minutes: Int, scheduled: Boolean = false) {
         val m = minutes.coerceIn(1, MAX_MINUTES)
         val end = System.currentTimeMillis() + m * 60_000L
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putLong(KEY_END, end).apply()
         scheduleEnd(ctx, end)
+        LockEvents.started(ctx, m, end, scheduled)
+    }
+
+    /** Same checks as the Start button: Shield on, background running allowed, at least one installed app picked. */
+    fun canLock(ctx: Context): Boolean {
+        val flat = android.provider.Settings.Secure.getString(
+            ctx.contentResolver, android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: return false
+        val me = android.content.ComponentName(ctx, BlockerService::class.java).flattenToString()
+        val shield = flat.split(':').any { it.equals(me, ignoreCase = true) }
+        val battery = (ctx.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager)
+            .isIgnoringBatteryOptimizations(ctx.packageName)
+        val apps = lockedApps(ctx).any { ctx.packageManager.getLaunchIntentForPackage(it) != null }
+        return shield && battery && apps
     }
 
     /** Clears the lock. Not callable from the UI while a lock is active. */
@@ -86,7 +100,7 @@ object LockManager {
     /** Re-arm the end alarm after a reboot, or clear if the time already passed. */
     fun reconcileAfterBoot(ctx: Context) {
         val end = endTime(ctx)
-        if (end <= System.currentTimeMillis()) clear(ctx) else scheduleEnd(ctx, end)
+        if (end <= System.currentTimeMillis()) clear(ctx) else { scheduleEnd(ctx, end); LockEvents.rearm(ctx) }
     }
 
     private fun endIntent(ctx: Context): PendingIntent {

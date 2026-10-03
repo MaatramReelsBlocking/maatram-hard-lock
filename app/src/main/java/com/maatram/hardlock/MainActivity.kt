@@ -56,6 +56,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         Motivation.handleIntent(this, intent)
         Motivation.scheduleNext(this)
+        LockSchedule.arm(this)
         setContent { App() }
     }
 
@@ -294,6 +295,9 @@ private fun SetupScreen(
         }
 
         Spacer(Modifier.height(22.dp))
+        ScheduleCard(ctx)
+
+        Spacer(Modifier.height(12.dp))
         MotivationCard(ctx)
 
         Spacer(Modifier.height(22.dp))
@@ -315,12 +319,63 @@ private fun SetupScreen(
 }
 
 @Composable
+private fun ScheduleCard(ctx: Context) {
+    var plan by remember { mutableStateOf(LockSchedule.get(ctx)) }
+    val askNotify = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    fun save(p: LockSchedule.Plan) { plan = p; LockSchedule.set(ctx, p) }
+    Surface(color = CARD, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(18.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Scheduled lock", color = INK, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        if (plan.on) "Starts at %02d:%02d for %d min%s".format(plan.hour, plan.minute, plan.minutes, if (plan.daily) ", every day" else ", once")
+                        else "Off. Pick a time and the lock starts on its own.",
+                        color = if (plan.on) ACCENT else DIM, fontSize = 13.sp, lineHeight = 18.sp
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Switch(
+                    checked = plan.on,
+                    onCheckedChange = {
+                        save(plan.copy(on = it))
+                        if (it && Build.VERSION.SDK_INT >= 33) askNotify.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    },
+                    colors = SwitchDefaults.colors(checkedTrackColor = ACCENT, checkedThumbColor = BG)
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(
+                    onClick = {
+                        android.app.TimePickerDialog(ctx, { _, h, m -> save(plan.copy(hour = h, minute = m)) },
+                            plan.hour, plan.minute, true).show()
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = ACCENT)
+                ) { Text("Time %02d:%02d".format(plan.hour, plan.minute), fontWeight = FontWeight.SemiBold) }
+                Spacer(Modifier.width(12.dp))
+                Checkbox(
+                    checked = plan.daily,
+                    onCheckedChange = { save(plan.copy(daily = it)) },
+                    colors = CheckboxDefaults.colors(checkedColor = ACCENT, checkmarkColor = BG)
+                )
+                Text("Every day", color = INK, fontSize = 14.sp)
+            }
+            Spacer(Modifier.height(10.dp))
+            DurationChips(plan.minutes) { save(plan.copy(minutes = it)) }
+        }
+    }
+}
+
+@Composable
 private fun MotivationCard(ctx: Context) {
     var on by remember { mutableStateOf(Motivation.isOn(ctx)) }
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (!granted) { on = false; Motivation.setOn(ctx, false) }
     }
-    // Reminders are on by default: ask for notification permission once it's needed (Android 13+).
+    // Reminders are opt-in: if switched on, make sure notification permission is granted (Android 13+).
     LaunchedEffect(Unit) {
         if (on && Build.VERSION.SDK_INT >= 33 &&
             ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
@@ -332,7 +387,7 @@ private fun MotivationCard(ctx: Context) {
                 Text("Motivation reminders", color = INK, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "A short line 3 times a day with a one-tap ${Motivation.QUICK_MINUTES}-minute Hard Lock. Skipped while a lock is running.",
+                    "Optional. A short line 3 times a day with a one-tap ${Motivation.QUICK_MINUTES}-minute Hard Lock. Skipped while a lock is running.",
                     color = DIM, fontSize = 13.sp, lineHeight = 18.sp
                 )
             }

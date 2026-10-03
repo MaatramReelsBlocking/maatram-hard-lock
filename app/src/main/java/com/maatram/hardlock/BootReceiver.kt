@@ -9,5 +9,6 @@ class BootReceiver : BroadcastReceiver() {
         // Lock end time is stored; re-arm the end alarm or clear if already past.
         LockManager.reconcileAfterBoot(context)
         Motivation.scheduleNext(context)
+        LockSchedule.arm(context)
     }
 }
