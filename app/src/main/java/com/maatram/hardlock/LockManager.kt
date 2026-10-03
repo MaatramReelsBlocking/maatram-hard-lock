@@ -15,12 +15,11 @@ object LockManager {
 
     private const val PREFS = "MaatramLock"
     private const val KEY_END = "lock_end"          // epoch millis, 0 = not locked
-    private const val KEY_WA = "whatsapp_allowed"
-    private const val KEY_CUSTOM = "custom_blocked" // apps the user picked, on top of BLOCKED
+    private const val KEY_APPS = "locked_apps"      // exactly the apps the user picked
     const val MAX_MINUTES = 90
 
-    // Apps blocked while a Hard Lock is running.
-    val BLOCKED: Set<String> = setOf(
+    // Pre-ticked in the picker until the user saves their own choice. Not forced.
+    val DEFAULTS: Set<String> = setOf(
         "com.instagram.android", "com.instagram.lite", "com.instagram.barcelona",
         "com.zhiliaoapp.musically", "com.ss.android.ugc.trill",
         "com.snapchat.android",
@@ -52,32 +51,21 @@ object LockManager {
         return if (left > 0L) left else 0L
     }
 
-    fun whatsappAllowed(ctx: Context): Boolean =
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_WA, true)
-
-    fun setWhatsappAllowed(ctx: Context, allowed: Boolean) {
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putBoolean(KEY_WA, allowed).apply()
+    /** The apps locked during a Hard Lock: the user's picks, or DEFAULTS if never picked. */
+    fun lockedApps(ctx: Context): Set<String> {
+        val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return if (p.contains(KEY_APPS)) p.getStringSet(KEY_APPS, emptySet()) ?: emptySet()
+        else DEFAULTS
     }
 
-    /** Extra apps the user chose to lock (games, streaming, anything installed). */
-    fun customBlocked(ctx: Context): Set<String> =
+    fun setLockedApps(ctx: Context, pkgs: Set<String>) {
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getStringSet(KEY_CUSTOM, emptySet()) ?: emptySet()
-
-    fun setCustomBlocked(ctx: Context, pkgs: Set<String>) {
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putStringSet(KEY_CUSTOM, HashSet(pkgs)).apply()
+            .edit().putStringSet(KEY_APPS, HashSet(pkgs)).apply()
     }
 
-    fun isBlocked(ctx: Context, pkg: String): Boolean {
-        if (pkg in BLOCKED) return true
-        if (pkg in GUARDED) return true
-        if (pkg in customBlocked(ctx)) return true
-        if (!whatsappAllowed(ctx) &&
-            (pkg == "com.whatsapp" || pkg == "com.whatsapp.w4b")) return true
-        return false
-    }
+    // Only the picked apps, plus Settings/installer so the lock can't be removed.
+    fun isBlocked(ctx: Context, pkg: String): Boolean =
+        pkg in GUARDED || pkg in lockedApps(ctx)
 
     /** Starts a lock for [minutes] (clamped to 1..MAX_MINUTES) and arms the end alarm. */
     fun start(ctx: Context, minutes: Int) {
