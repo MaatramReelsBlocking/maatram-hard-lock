@@ -48,10 +48,23 @@ class BlockerService : AccessibilityService() {
         // Only the exact app that came to the front. No launcher/Recents guessing:
         // on Xiaomi the launcher runs app-open animations, which looked like
         // "Recents" and made every app launch bounce.
-        if (pkg == packageName || !LockManager.isBlocked(this, pkg)) return
+        if (pkg == packageName) return
+        val cls = event?.className?.toString().orEmpty()
+        if (!LockManager.isBlocked(this, pkg, cls) && !isRecents(pkg, cls)) return
 
         performGlobalAction(GLOBAL_ACTION_HOME)
         showPill(pkg)
+    }
+
+    /**
+     * The Recents screen, matched by its window class only (never by text), so a
+     * normal app launch can't be mistaken for it. Bounced while locked: "Clear all"
+     * in Recents is how most phones kill the Shield. Unknown launchers simply
+     * don't match, which is safe.
+     */
+    private fun isRecents(pkg: String, cls: String): Boolean {
+        val systemUi = pkg == "com.android.systemui" || "launcher" in pkg || pkg.endsWith(".home")
+        return systemUi && cls.contains("recents", ignoreCase = true)
     }
 
     /** Foreground notification while locked; dropped when the lock ends. */

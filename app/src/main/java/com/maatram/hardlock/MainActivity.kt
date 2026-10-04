@@ -114,6 +114,13 @@ private fun App() {
     val battery = remember(resumes) { batteryFree(ctx) }
     // Tick every second only while locked (countdown); idle setup screen does no work.
     LaunchedEffect(locked) { while (locked) { delay(1000); tick++ } }
+    // Hide this app's card from Recents while locked, so "Clear all" can't target it.
+    LaunchedEffect(locked) {
+        try {
+            (ctx.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager)
+                .appTasks.forEach { it.setExcludeFromRecents(locked) }
+        } catch (_: Exception) {}
+    }
 
     MaterialTheme(colorScheme = darkColorScheme(primary = ACCENT, background = BG)) {
         Surface(Modifier.fillMaxSize(), color = BG) {

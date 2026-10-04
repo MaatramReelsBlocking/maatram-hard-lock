@@ -36,8 +36,16 @@ object LockManager {
         "com.android.settings.intelligence",
         "com.android.packageinstaller",
         "com.google.android.packageinstaller",
-        "com.miui.securitycenter",           // Xiaomi
-        "com.samsung.android.sm"             // Samsung device care
+    )
+
+    // These system apps also show harmless pop-ups when other apps open
+    // (Xiaomi's "allow app to start" dialogs, Samsung battery tips). Blocking the
+    // whole package bounced every app launch, so only their app-info /
+    // force-stop / permission screens are guarded.
+    private val GUARDED_SCREENS: Map<String, List<String>> = mapOf(
+        "com.miui.securitycenter" to listOf("appmanager", "applicationsdetails", "permcenter", "autostart"),
+        "com.samsung.android.sm" to listOf("appmanagement", "appdetail"),
+        "com.samsung.android.lool" to listOf("appmanagement", "appdetail")
     )
 
     fun isLocked(ctx: Context): Boolean = remainingMs(ctx) > 0L
@@ -64,8 +72,9 @@ object LockManager {
     }
 
     // Only the picked apps, plus Settings/installer so the lock can't be removed.
-    fun isBlocked(ctx: Context, pkg: String): Boolean =
-        pkg in GUARDED || pkg in lockedApps(ctx)
+    fun isBlocked(ctx: Context, pkg: String, cls: String = ""): Boolean =
+        pkg in GUARDED || pkg in lockedApps(ctx) ||
+            GUARDED_SCREENS[pkg]?.any { cls.contains(it, ignoreCase = true) } == true
 
     /** Starts a lock for [minutes] (clamped to 1..MAX_MINUTES), arms the end alarm and notifies. */
     fun start(ctx: Context, minutes: Int, scheduled: Boolean = false) {
