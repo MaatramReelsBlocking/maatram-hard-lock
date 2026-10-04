@@ -17,7 +17,9 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -29,10 +31,16 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -45,11 +53,46 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
+// Same tokens as maatram.co.in (theme.src.js, html.minimal).
 private val BG = Color(0xFF0B0C0B)
-private val CARD = Color(0xFF141915)
-private val ACCENT = Color(0xFF6FBF9A)
-private val INK = Color(0xFFECEFEE)
-private val DIM = Color(0xFF8FA39A)
+private val CARD = Color(0x0EFFFFFF)       // --card rgba(255,255,255,.055)
+private val STROKE = Color(0x21FFFFFF)     // --stroke rgba(255,255,255,.13)
+private val ACCENT = Color(0xFF9CC0B2)     // --accent sage
+private val INK = Color(0xFFECEFEE)        // --ink
+private val DIM = Color(0xFF8A928E)        // --dim
+private val DANGER = Color(0xFFD98A94)     // --danger
+private val ORB = Color(0xFF9CC0B2)
+private val CARD_SHAPE = RoundedCornerShape(24.dp)   // --radius 24px
+private val PILL = RoundedCornerShape(100.dp)        // site buttons are pills
+private val Jakarta = FontFamily(
+    Font(R.font.jakarta_regular, FontWeight.Normal),
+    Font(R.font.jakarta_semibold, FontWeight.SemiBold),
+    Font(R.font.jakarta_bold, FontWeight.Bold),
+)
+
+/** Glass card: faint white fill + thin white stroke, 24dp corners. */
+@Composable
+private fun Card(modifier: Modifier = Modifier, content: @Composable () -> Unit) =
+    Surface(color = CARD, shape = CARD_SHAPE, border = BorderStroke(1.dp, STROKE),
+        modifier = modifier.fillMaxWidth(), content = content)
+
+/** Primary button: light pill with dark text, like the site's download button. */
+@Composable
+private fun PrimaryButton(text: String, enabled: Boolean = true, modifier: Modifier = Modifier, onClick: () -> Unit) =
+    Button(
+        onClick = onClick, enabled = enabled, shape = PILL,
+        modifier = modifier.height(54.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = INK, contentColor = BG,
+            disabledContainerColor = Color(0x1FFFFFFF), disabledContentColor = DIM
+        )
+    ) { Text(text, fontWeight = FontWeight.Bold, fontSize = 16.sp) }
+
+@Composable
+private fun GhostButton(text: String, onClick: () -> Unit) =
+    OutlinedButton(onClick = onClick, shape = PILL, border = BorderStroke(1.dp, STROKE),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = ACCENT)
+    ) { Text(text, fontWeight = FontWeight.SemiBold) }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -122,13 +165,31 @@ private fun App() {
         } catch (_: Exception) {}
     }
 
-    MaterialTheme(colorScheme = darkColorScheme(primary = ACCENT, background = BG)) {
-        Surface(Modifier.fillMaxSize(), color = BG) {
+    val type = Typography().let { t ->
+        Typography(
+            bodyLarge = t.bodyLarge.copy(fontFamily = Jakarta), bodyMedium = t.bodyMedium.copy(fontFamily = Jakarta),
+            labelLarge = t.labelLarge.copy(fontFamily = Jakarta), titleMedium = t.titleMedium.copy(fontFamily = Jakarta)
+        )
+    }
+    MaterialTheme(colorScheme = darkColorScheme(primary = ACCENT, background = BG, surface = BG), typography = type) {
+        ProvideTextStyle(TextStyle(fontFamily = Jakarta)) {
+        Box(
+            Modifier.fillMaxSize().background(BG).drawBehind {
+                // Two soft sage orbs, same placement as the site.
+                val r1 = size.minDimension * 0.42f
+                drawCircle(Brush.radialGradient(listOf(ORB.copy(alpha = .22f), Color.Transparent),
+                    Offset(size.width * .82f, size.height * .12f), r1), r1, Offset(size.width * .82f, size.height * .12f))
+                val r2 = size.minDimension * 0.34f
+                drawCircle(Brush.radialGradient(listOf(ORB.copy(alpha = .16f), Color.Transparent),
+                    Offset(size.width * .14f, size.height * .78f), r2), r2, Offset(size.width * .14f, size.height * .78f))
+            }
+        ) {
             when {
                 locked -> LockedScreen(ctx, shield)
                 picking -> AppPicker(ctx) { picking = false }
                 else -> SetupScreen(ctx, shield, admin, battery, onPick = { picking = true }) { tick++ }
             }
+        }
         }
     }
 }
@@ -167,14 +228,14 @@ private fun LockedScreen(ctx: Context, shield: Boolean) {
             Spacer(Modifier.height(24.dp))
             Text(
                 "The Shield was switched off, so nothing is blocked right now. Turn it back on.",
-                color = Color(0xFFE57373), fontSize = 14.sp, textAlign = TextAlign.Center
+                color = DANGER, fontSize = 14.sp, textAlign = TextAlign.Center
             )
             Spacer(Modifier.height(12.dp))
-            OutlinedButton(onClick = {
+            GhostButton("Turn on Shield") {
                 ctx.startActivity(
                     Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 )
-            }) { Text("Turn on Shield", color = ACCENT) }
+            }
         }
     }
 }
@@ -185,9 +246,13 @@ private fun SetupScreen(
     onPick: () -> Unit, onStarted: () -> Unit
 ) {
     var minutes by remember { mutableStateOf(25) }
-    // Count only installed apps (defaults include apps the phone may not have).
-    val lockedCount = remember {
-        LockManager.lockedApps(ctx).count { ctx.packageManager.getLaunchIntentForPackage(it) != null }
+    // Count only apps still installed.
+    val picked = remember {
+        LockManager.lockedApps(ctx).filter { ctx.packageManager.getLaunchIntentForPackage(it) != null }
+    }
+    val lockedCount = picked.size
+    val pickedIcons by produceState(emptyList<ImageBitmap>(), picked) {
+        value = withContext(Dispatchers.IO) { picked.take(7).mapNotNull { appIcon(ctx, it) } }
     }
     // Xiaomi: Autostart can't be read back, so remember that the user opened it.
     val autostart = remember { autostartIntent(ctx) }
@@ -201,12 +266,70 @@ private fun SetupScreen(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(22.dp)
     ) {
         Spacer(Modifier.height(16.dp))
-        Text("Maatram", color = INK, fontWeight = FontWeight.Bold, fontSize = 30.sp)
+        Text("Maatram", color = INK, fontWeight = FontWeight.Bold, fontSize = 32.sp, letterSpacing = (-0.5).sp)
         Text("Hard Lock", color = ACCENT, fontWeight = FontWeight.Bold, fontSize = 20.sp)
         Spacer(Modifier.height(6.dp))
         Text("Bringing a change in you", color = DIM, fontSize = 14.sp)
         Spacer(Modifier.height(24.dp))
 
+        // Apps to lock — first, since nothing locks until apps are picked.
+        Card {
+            Column(Modifier.padding(18.dp)) {
+                Text("Apps to lock", color = INK, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    if (lockedCount == 0) "No apps chosen yet. Only the apps you pick get locked."
+                    else "$lockedCount app${if (lockedCount == 1) "" else "s"} will be locked. Everything else keeps working.",
+                    color = if (lockedCount == 0) DIM else ACCENT, fontSize = 13.sp, lineHeight = 18.sp
+                )
+                if (pickedIcons.isNotEmpty()) {
+                    Spacer(Modifier.height(12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        pickedIcons.take(7).forEach { Image(it, null, Modifier.size(34.dp)) }
+                        if (lockedCount > 7) Text("+${lockedCount - 7}", color = DIM, fontSize = 13.sp,
+                            modifier = Modifier.align(Alignment.CenterVertically))
+                    }
+                }
+                Spacer(Modifier.height(14.dp))
+                GhostButton(if (lockedCount == 0) "Choose apps to lock" else "Change apps", onPick)
+            }
+        }
+
+        Spacer(Modifier.height(22.dp))
+        Text("Lock duration", color = INK, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+        Spacer(Modifier.height(12.dp))
+        DurationChips(minutes) { minutes = it }
+
+        // Android 13+: allow the "Hard Lock is on" notification that keeps the Shield alive.
+        val askNotify = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+        Spacer(Modifier.height(26.dp))
+        Button(
+            onClick = {
+                if (Build.VERSION.SDK_INT >= 33) askNotify.launch(Manifest.permission.POST_NOTIFICATIONS)
+                LockManager.start(ctx, minutes); onStarted()
+            },
+            enabled = ready,
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+            shape = PILL,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = INK, contentColor = BG,
+                disabledContainerColor = Color(0x1FFFFFFF), disabledContentColor = DIM
+            )
+        ) {
+            Text(
+                when {
+                    !shield -> "Turn on Shield first"
+                    !keepRunning -> "Finish step 3 first"
+                    lockedCount == 0 -> "Choose apps to lock first"
+                    else -> "Start Hard Lock · $minutes min"
+                },
+                fontWeight = FontWeight.Bold, fontSize = 16.sp
+            )
+        }
+
+        Spacer(Modifier.height(22.dp))
+        Text("Setup", color = INK, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+        Spacer(Modifier.height(10.dp))
         // Step 1 — Shield
         StatusCard(
             title = "1 · Focus Shield",
@@ -277,54 +400,11 @@ private fun SetupScreen(
         }
 
         Spacer(Modifier.height(22.dp))
-        Text("Lock duration", color = INK, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-        Spacer(Modifier.height(12.dp))
-        DurationChips(minutes) { minutes = it }
-
-        // Android 13+: allow the "Hard Lock is on" notification that keeps the Shield alive.
-        val askNotify = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
-        Spacer(Modifier.height(26.dp))
-        Button(
-            onClick = {
-                if (Build.VERSION.SDK_INT >= 33) askNotify.launch(Manifest.permission.POST_NOTIFICATIONS)
-                LockManager.start(ctx, minutes); onStarted()
-            },
-            enabled = ready,
-            modifier = Modifier.fillMaxWidth().height(56.dp),
-            shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = ACCENT, contentColor = BG)
-        ) {
-            Text(
-                when {
-                    !shield -> "Turn on Shield first"
-                    !keepRunning -> "Finish step 3 first"
-                    lockedCount == 0 -> "Choose apps to lock first"
-                    else -> "Start Hard Lock · $minutes min"
-                },
-                fontWeight = FontWeight.Bold, fontSize = 16.sp
-            )
-        }
-
-        Spacer(Modifier.height(22.dp))
         ScheduleCard(ctx)
 
         Spacer(Modifier.height(12.dp))
         MotivationCard(ctx)
 
-        Spacer(Modifier.height(22.dp))
-        Text("Apps to lock", color = INK, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-        Spacer(Modifier.height(6.dp))
-        Text(
-            if (lockedCount == 0) "No apps chosen yet. Only the apps you pick get locked."
-            else "$lockedCount app${if (lockedCount == 1) "" else "s"} will be locked. Everything else keeps working.",
-            color = if (lockedCount == 0) DIM else ACCENT, fontSize = 13.sp, lineHeight = 18.sp
-        )
-        Spacer(Modifier.height(10.dp))
-        OutlinedButton(
-            onClick = onPick,
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = ACCENT)
-        ) { Text("Choose apps to lock", fontWeight = FontWeight.SemiBold) }
         Spacer(Modifier.height(28.dp))
     }
 }
@@ -334,7 +414,7 @@ private fun ScheduleCard(ctx: Context) {
     var plan by remember { mutableStateOf(LockSchedule.get(ctx)) }
     val askNotify = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     fun save(p: LockSchedule.Plan) { plan = p; LockSchedule.set(ctx, p) }
-    Surface(color = CARD, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+    Card {
         Column(Modifier.padding(18.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -353,19 +433,15 @@ private fun ScheduleCard(ctx: Context) {
                         save(plan.copy(on = it))
                         if (it && Build.VERSION.SDK_INT >= 33) askNotify.launch(Manifest.permission.POST_NOTIFICATIONS)
                     },
-                    colors = SwitchDefaults.colors(checkedTrackColor = ACCENT, checkedThumbColor = BG)
+                    colors = SwitchDefaults.colors(checkedTrackColor = ACCENT, checkedThumbColor = BG, uncheckedTrackColor = CARD, uncheckedBorderColor = STROKE)
                 )
             }
             Spacer(Modifier.height(12.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedButton(
-                    onClick = {
-                        android.app.TimePickerDialog(ctx, { _, h, m -> save(plan.copy(hour = h, minute = m)) },
-                            plan.hour, plan.minute, true).show()
-                    },
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = ACCENT)
-                ) { Text("Time %02d:%02d".format(plan.hour, plan.minute), fontWeight = FontWeight.SemiBold) }
+                GhostButton("Time %02d:%02d".format(plan.hour, plan.minute)) {
+                    android.app.TimePickerDialog(ctx, { _, h, m -> save(plan.copy(hour = h, minute = m)) },
+                        plan.hour, plan.minute, true).show()
+                }
                 Spacer(Modifier.width(12.dp))
                 Checkbox(
                     checked = plan.daily,
@@ -392,7 +468,7 @@ private fun MotivationCard(ctx: Context) {
             ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) ask.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
-    Surface(color = CARD, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+    Card {
         Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Daily motivation", color = INK, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
@@ -409,7 +485,7 @@ private fun MotivationCard(ctx: Context) {
                     on = it; Motivation.setOn(ctx, it)
                     if (it && Build.VERSION.SDK_INT >= 33) ask.launch(Manifest.permission.POST_NOTIFICATIONS)
                 },
-                colors = SwitchDefaults.colors(checkedTrackColor = ACCENT, checkedThumbColor = BG)
+                colors = SwitchDefaults.colors(checkedTrackColor = ACCENT, checkedThumbColor = BG, uncheckedTrackColor = CARD, uncheckedBorderColor = STROKE)
             )
         }
     }
@@ -425,8 +501,9 @@ private fun DurationChips(selected: Int, onPick: (Int) -> Unit) {
                     val sel = m == selected
                     Surface(
                         color = if (sel) ACCENT else CARD,
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.weight(1f).height(52.dp)
+                        shape = PILL,
+                        border = if (sel) null else BorderStroke(1.dp, STROKE),
+                        modifier = Modifier.weight(1f).height(50.dp)
                     ) {
                         Box(Modifier.fillMaxSize().clickable { onPick(m) }, Alignment.Center) {
                             Text(
@@ -448,30 +525,36 @@ private fun StatusCard(
     title: String, on: Boolean, onText: String, offText: String,
     button: String?, onClick: () -> Unit
 ) {
-    Surface(color = CARD, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(18.dp)) {
+    Card {
+        Column(Modifier.padding(horizontal = 18.dp, vertical = if (on && button == null) 14.dp else 18.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(if (on) "✅" else "⚠️", fontSize = 18.sp)
+                Text(if (on) "✓" else "!", color = if (on) ACCENT else DANGER, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 Spacer(Modifier.width(10.dp))
-                Text(title, color = INK, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                Text(title, color = INK, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
             }
-            Spacer(Modifier.height(6.dp))
-            Text(if (on) onText else offText, color = if (on) ACCENT else DIM, fontSize = 13.sp)
+            // Done steps shrink to one line; only unfinished ones explain themselves.
+            if (!on || button != null) {
+                Spacer(Modifier.height(6.dp))
+                Text(if (on) onText else offText, color = if (on) ACCENT else DIM, fontSize = 13.sp, lineHeight = 18.sp)
+            }
             if (button != null) {
                 Spacer(Modifier.height(12.dp))
-                OutlinedButton(
-                    onClick = onClick,
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = ACCENT)
-                ) { Text(button, fontWeight = FontWeight.SemiBold) }
+                GhostButton(button, onClick)
             }
         }
     }
 }
 
-private data class AppItem(val pkg: String, val label: String, val icon: ImageBitmap?)
+private data class AppItem(val pkg: String, val label: String)
 
-/** Every launchable app, minus this app, the phone dialer and the always-guarded Settings. */
+// Kept for the life of the process: reopening the picker is instant.
+private var appCache: List<AppItem>? = null
+private val iconCache = HashMap<String, ImageBitmap?>()
+
+private fun appIcon(ctx: Context, pkg: String): ImageBitmap? =
+    try { ctx.packageManager.getApplicationIcon(pkg).toBitmap(96, 96).asImageBitmap() } catch (_: Exception) { null }
+
+/** Every launchable app, minus this app, the phone dialer and Settings-type apps. Names only; icons load per row. */
 private fun loadApps(ctx: Context): List<AppItem> {
     val pm = ctx.packageManager
     val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
@@ -481,19 +564,30 @@ private fun loadApps(ctx: Context): List<AppItem> {
     return pm.queryIntentActivities(launcher, 0)
         .distinctBy { it.activityInfo.packageName }
         .filter { it.activityInfo.packageName !in skip }
-        .map { ri ->
-            val icon = try { ri.loadIcon(pm).toBitmap(96, 96).asImageBitmap() } catch (_: Exception) { null }
-            AppItem(ri.activityInfo.packageName, ri.loadLabel(pm).toString(), icon)
-        }
+        .map { ri -> AppItem(ri.activityInfo.packageName, ri.loadLabel(pm).toString()) }
         .sortedBy { it.label.lowercase() }
+}
+
+@Composable
+private fun AppIcon(ctx: Context, pkg: String) {
+    val icon by produceState(iconCache[pkg], pkg) {
+        if (!iconCache.containsKey(pkg)) {
+            val b = withContext(Dispatchers.IO) { appIcon(ctx, pkg) }
+            iconCache[pkg] = b
+            value = b
+        }
+    }
+    val ic = icon
+    if (ic != null) Image(bitmap = ic, contentDescription = null, modifier = Modifier.size(40.dp))
+    else Spacer(Modifier.size(40.dp))
 }
 
 @Composable
 private fun AppPicker(ctx: Context, onDone: () -> Unit) {
     val chosen = remember { mutableStateListOf<String>().apply { addAll(LockManager.lockedApps(ctx)) } }
     var query by remember { mutableStateOf("") }
-    val apps by produceState<List<AppItem>?>(initialValue = null) {
-        value = withContext(Dispatchers.IO) { loadApps(ctx) }
+    val apps by produceState(appCache) {
+        value = withContext(Dispatchers.IO) { loadApps(ctx) }.also { appCache = it }
     }
     // Keep only installed apps, so the count matches what's on the phone.
     val save = {
@@ -514,11 +608,7 @@ private fun AppPicker(ctx: Context, onDone: () -> Unit) {
                 )
             }
             Spacer(Modifier.width(10.dp))
-            Button(
-                onClick = save,
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = ACCENT, contentColor = BG)
-            ) { Text("Done", fontWeight = FontWeight.Bold) }
+            PrimaryButton("Done", onClick = save)
         }
         Spacer(Modifier.height(12.dp))
         OutlinedTextField(
@@ -526,6 +616,11 @@ private fun AppPicker(ctx: Context, onDone: () -> Unit) {
             onValueChange = { query = it },
             placeholder = { Text("Search apps") },
             singleLine = true,
+            shape = PILL,
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = ACCENT, unfocusedBorderColor = STROKE,
+                focusedTextColor = INK, unfocusedTextColor = INK, cursorColor = ACCENT
+            ),
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(Modifier.height(8.dp))
@@ -546,9 +641,7 @@ private fun AppPicker(ctx: Context, onDone: () -> Unit) {
                             .padding(vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        val ic = app.icon
-                        if (ic != null) Image(bitmap = ic, contentDescription = null, modifier = Modifier.size(40.dp))
-                        else Spacer(Modifier.size(40.dp))
+                        AppIcon(ctx, app.pkg)
                         Spacer(Modifier.width(14.dp))
                         Text(app.label, color = INK, fontSize = 15.sp, modifier = Modifier.weight(1f))
                         Checkbox(
