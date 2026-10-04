@@ -262,12 +262,16 @@ private fun SetupScreen(
                 Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
                 Uri.parse("package:${ctx.packageName}")
             ) else autostart
+            // Newer Xiaomi (HyperOS) refuses to open its Autostart screen directly, so the
+            // app-info page (where the Autostart switch also lives) opens instead. Either way
+            // the user was sent to turn it on, so the step is marked done.
+            if (battery) { prefs.edit().putBoolean("autostart_opened", true).apply(); autostartDone = true }
             try {
                 i?.let { ctx.startActivity(it) }
-                if (battery) { prefs.edit().putBoolean("autostart_opened", true).apply(); autostartDone = true }
             } catch (_: Exception) {
                 ctx.startActivity(
                     Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${ctx.packageName}"))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 )
             }
         }
