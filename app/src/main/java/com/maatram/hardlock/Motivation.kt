@@ -20,46 +20,222 @@ import java.util.Calendar
 object Motivation {
     private const val PREFS = "MaatramLock"
     private const val KEY_ON = "motivate_on"
-    private const val CHANNEL = "motivation"
+    // New id: a channel's importance can't be raised once created, and these must pop up on screen.
+    private const val CHANNEL = "motivation_popup"
     private const val NOTIF_ID = 2001
     const val ACTION_SHOW = "com.maatram.hardlock.MOTIVATE"
     const val EXTRA_QUICK_LOCK = "quick_lock"
     const val QUICK_MINUTES = 25
 
-    // Hours (24h) when a reminder is shown: mid-morning, after school, evening study.
-    private val TIMES = listOf(10 to 0, 16 to 30, 20 to 0)
+    // Five times a day (24h): morning, late morning, afternoon, after school, evening study.
+    private val TIMES = listOf(8 to 0, 11 to 0, 14 to 0, 17 to 0, 20 to 30)
 
-    // Original lines written for Maatram. Each one points back to the Hard Lock.
+    // Maatram's 200 lines. Five a day, a different set each day, cycling every 40 days.
     val LINES = listOf(
-        "Your future self is watching. Lock the apps for 25 minutes and give them something to thank you for.",
-        "The reel will still be there later. This hour won't. Start a Hard Lock.",
-        "Small locks, big change. 25 focused minutes beat 2 distracted hours.",
-        "You don't need more motivation. You need fewer distractions. Lock them out.",
-        "Scrolling feels like rest. Focus actually is. Try one Hard Lock now.",
-        "Every lock you finish is a promise you kept to yourself.",
-        "Champions train when nobody is watching. Put the phone on Hard Lock and get to work.",
-        "One chapter. One problem set. One Hard Lock. Begin.",
-        "Boredom is where good ideas start. Lock the feed and find out.",
-        "Your attention is the most valuable thing you own. Don't give it away for free.",
-        "Start before you feel ready. A 25-minute lock is enough to get going.",
-        "The best time to focus was this morning. The next best time is now.",
-        "Discipline is choosing what you want most over what you want right now.",
-        "Five minutes of scrolling turns into fifty. A Hard Lock turns it into progress.",
-        "Exams don't care about streaks. Lock the apps and study.",
-        "You are one focused hour away from a better day.",
-        "Turn the noise off. Turn your goals on.",
-        "Done is better than perfect. Lock in and get it done.",
-        "Your phone can wait. Your dreams are on a deadline.",
-        "Be the person who finishes. Start a Hard Lock.",
-        "Less screen, more you. Bringing a change in you starts with one lock.",
-        "Progress is quiet. Give it 25 minutes of silence.",
-        "Each lock is a rep for your focus muscle. Do one more.",
-        "Notifications will fight for your time. Win this round with a Hard Lock.",
-        "Tomorrow's results are built in today's quiet hours."
+        "Start before you feel ready.",
+        "Small steps create big changes.",
+        "Consistency beats intensity.",
+        "Keep going. You're building something.",
+        "Progress starts with one decision.",
+        "Discipline creates freedom.",
+        "Show up for yourself.",
+        "One focused hour can change your day.",
+        "Do it today, not someday.",
+        "Your future needs today's effort.",
+        "Keep the promise you made to yourself.",
+        "Progress loves consistency.",
+        "Make today count.",
+        "Focus on the next step.",
+        "Start small. Stay consistent.",
+        "Effort compounds.",
+        "Don't break the streak of effort.",
+        "Keep moving forward.",
+        "Discipline today, confidence tomorrow.",
+        "Build habits that build you.",
+        "Your actions shape your future.",
+        "Keep showing up.",
+        "Better every day.",
+        "Make progress, not excuses.",
+        "Stay committed to the process.",
+        "One day at a time.",
+        "Keep the momentum alive.",
+        "Do the work quietly.",
+        "Let consistency speak.",
+        "Progress is still progress.",
+        "Protect your attention.",
+        "Focus is your superpower.",
+        "One task. Full attention.",
+        "Your attention is valuable.",
+        "Choose focus over distraction.",
+        "Deep work. Real progress.",
+        "Less scrolling. More doing.",
+        "Give your goal your attention.",
+        "Focus on what matters.",
+        "Distractions can wait.",
+        "Be where your goals need you.",
+        "Attention creates achievement.",
+        "Clear mind. Clear direction.",
+        "Put the phone down. Pick the goal up.",
+        "Focus now. Relax later.",
+        "Don't trade your goals for distractions.",
+        "Your time deserves your attention.",
+        "One focused session at a time.",
+        "Make your attention count.",
+        "Protect your productive hours.",
+        "Silence the noise.",
+        "Choose progress over notifications.",
+        "Your goals need focus, not excuses.",
+        "Stay locked in.",
+        "Focus creates momentum.",
+        "Control your attention.",
+        "Give less to distractions, more to yourself.",
+        "Your next breakthrough needs focus.",
+        "Focus is a choice.",
+        "Be intentional with your time.",
+        "You haven't reached your limit.",
+        "Learn. Adapt. Grow.",
+        "Growth begins outside comfort.",
+        "Become better than yesterday.",
+        "Keep learning.",
+        "Mistakes are part of progress.",
+        "Challenge yourself.",
+        "Growth takes time.",
+        "Trust the process.",
+        "Keep improving.",
+        "Every attempt teaches you something.",
+        "Progress begins with practice.",
+        "Learn from today.",
+        "Keep raising your standard.",
+        "You are capable of more.",
+        "Growth is built, not given.",
+        "Practice makes progress.",
+        "Keep pushing your boundaries.",
+        "Every day is another opportunity.",
+        "Improvement is always possible.",
+        "Learn something. Build something.",
+        "Turn effort into ability.",
+        "Your potential grows with practice.",
+        "Keep becoming.",
+        "Progress starts where comfort ends.",
+        "Don't fear the learning curve.",
+        "Challenge creates growth.",
+        "Stay curious.",
+        "Keep developing your potential.",
+        "Growth happens one choice at a time.",
+        "Tough days build strong minds.",
+        "Keep going when it's difficult.",
+        "You can handle the next step.",
+        "Don't quit on a hard day.",
+        "Strength grows through challenges.",
+        "Stay strong. Stay steady.",
+        "Difficult doesn't mean impossible.",
+        "Keep moving through the challenge.",
+        "You are stronger than one bad day.",
+        "Pressure can build resilience.",
+        "Stand back up and continue.",
+        "Hard work builds confidence.",
+        "Keep your head up.",
+        "Challenges don't define you.",
+        "Be patient with your progress.",
+        "Stay steady under pressure.",
+        "Keep fighting for your goals.",
+        "Strong habits create strong minds.",
+        "Don't let one setback stop you.",
+        "You can start again.",
+        "Persistence changes outcomes.",
+        "Keep your momentum.",
+        "Stay patient. Stay persistent.",
+        "Hard moments pass. Keep moving.",
+        "Your effort matters.",
+        "Keep going, even slowly.",
+        "Resilience is built daily.",
+        "Don't underestimate steady effort.",
+        "Fall behind? Start again.",
+        "Keep choosing progress.",
+        "Think big. Start small.",
+        "Your goals need action.",
+        "Dream it. Build it.",
+        "Make your future worth the effort.",
+        "Chase progress, not perfection.",
+        "Turn goals into habits.",
+        "Your ambition needs consistency.",
+        "Set the goal. Do the work.",
+        "Build the future you imagine.",
+        "Aim higher.",
+        "Keep your eyes on the goal.",
+        "Big goals start with small actions.",
+        "Make your goals measurable.",
+        "Work toward something meaningful.",
+        "Your future is built today.",
+        "Don't just dream it. Work for it.",
+        "Give your goals a chance.",
+        "Ambition starts with action.",
+        "Keep moving toward the target.",
+        "Your goals are worth your effort.",
+        "Make your next move count.",
+        "Build, don't just wish.",
+        "Let your actions match your ambition.",
+        "Keep the vision. Do the work.",
+        "Progress toward something bigger.",
+        "Make today part of the plan.",
+        "Your destination starts with today's step.",
+        "Work for the version of you you want to become.",
+        "Stay hungry for improvement.",
+        "Keep building your future.",
+        "Study now. Thank yourself later.",
+        "Your effort today becomes confidence tomorrow.",
+        "Learn for your future, not just the exam.",
+        "One chapter at a time.",
+        "Your hard work will add up.",
+        "Focus on understanding, not just finishing.",
+        "Make your study time count.",
+        "Keep learning. Keep growing.",
+        "Your future self is watching.",
+        "Don't underestimate one study session.",
+        "Knowledge compounds too.",
+        "Focus now. Results later.",
+        "Study with purpose.",
+        "Make progress before perfection.",
+        "One page closer.",
+        "One problem closer.",
+        "One session closer.",
+        "Your goals deserve your best effort.",
+        "Learn today. Lead tomorrow.",
+        "Build skills, not just marks.",
+        "Stay curious. Stay focused.",
+        "Every lesson adds up.",
+        "Your preparation creates confidence.",
+        "Don't wait for motivation. Start.",
+        "Make your study hour powerful.",
+        "Lock in.",
+        "Keep moving.",
+        "Stay focused.",
+        "Start now.",
+        "Keep building.",
+        "Make it count.",
+        "Stay consistent.",
+        "Trust yourself.",
+        "Keep improving.",
+        "Choose progress.",
+        "Stay disciplined.",
+        "Keep pushing.",
+        "Don't settle.",
+        "Go further.",
+        "Stay hungry.",
+        "Think forward.",
+        "Keep learning.",
+        "Take control.",
+        "Make progress.",
+        "Stay on track.",
+        "Do the work.",
+        "Own your time.",
+        "Build your future.",
+        "Keep becoming.",
+        "Your time. Your choice. Your Maatram."
     )
 
     fun isOn(ctx: Context): Boolean =
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_ON, false)
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_ON, true)
 
     fun setOn(ctx: Context, on: Boolean) {
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_ON, on).apply()
@@ -85,7 +261,8 @@ object Motivation {
             }
         }.minByOrNull { it.timeInMillis } ?: return
         val am = ctx.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        am.set(AlarmManager.RTC_WAKEUP, next.timeInMillis, alarmIntent(ctx))
+        // Fires even in Doze, within a few minutes of the time. No exact-alarm permission needed.
+        am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, next.timeInMillis, alarmIntent(ctx))
     }
 
     private fun cancel(ctx: Context) {
@@ -99,10 +276,15 @@ object Motivation {
         val nm = ctx.getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= 33 && !nm.areNotificationsEnabled()) return
         nm.createNotificationChannel(
-            NotificationChannel(CHANNEL, "Motivation reminders", NotificationManager.IMPORTANCE_DEFAULT)
-                .apply { description = "A few short nudges a day to start a Hard Lock" }
+            NotificationChannel(CHANNEL, "Daily motivation", NotificationManager.IMPORTANCE_HIGH)
+                .apply { description = "Five short lines a day, shown as a pop-up on your screen" }
         )
-        val line = LINES.random()
+        // Which of today's five: the slot nearest the current time. Day number picks the set.
+        val cal = Calendar.getInstance()
+        val nowMin = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
+        val slot = TIMES.indices.minByOrNull { kotlin.math.abs(TIMES[it].first * 60 + TIMES[it].second - nowMin) } ?: 0
+        val day = (System.currentTimeMillis() + java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis())) / 86_400_000L
+        val line = LINES[((day * TIMES.size + slot) % LINES.size).toInt()]
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         val open = PendingIntent.getActivity(
             ctx, 2003,
@@ -119,7 +301,9 @@ object Motivation {
         )
         val n = Notification.Builder(ctx, CHANNEL)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle("Time to focus")
+            .setContentTitle("Maatram")
+            .setPriority(Notification.PRIORITY_HIGH)
+            .setCategory(Notification.CATEGORY_REMINDER)
             .setContentText(line)
             .setStyle(Notification.BigTextStyle().bigText(line))
             .setContentIntent(open)

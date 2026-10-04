@@ -386,7 +386,7 @@ private fun MotivationCard(ctx: Context) {
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (!granted) { on = false; Motivation.setOn(ctx, false) }
     }
-    // Reminders are opt-in: if switched on, make sure notification permission is granted (Android 13+).
+    // On by default: make sure notification permission is granted (Android 13+).
     LaunchedEffect(Unit) {
         if (on && Build.VERSION.SDK_INT >= 33 &&
             ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
@@ -395,10 +395,10 @@ private fun MotivationCard(ctx: Context) {
     Surface(color = CARD, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Motivation reminders", color = INK, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                Text("Daily motivation", color = INK, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "Optional. A short line 3 times a day with a one-tap ${Motivation.QUICK_MINUTES}-minute Hard Lock. Skipped while a lock is running.",
+                    "5 short lines a day (8:00, 11:00, 14:00, 17:00, 20:30), shown as a pop-up on your screen. Skipped while a lock is running.",
                     color = DIM, fontSize = 13.sp, lineHeight = 18.sp
                 )
             }
