@@ -18,34 +18,17 @@ object LockManager {
     private const val KEY_APPS = "locked_apps"      // exactly the apps the user picked
     const val MAX_MINUTES = 90
 
-    // Pre-ticked in the picker until the user saves their own choice. Not forced.
-    val DEFAULTS: Set<String> = setOf(
-        "com.instagram.android", "com.instagram.lite", "com.instagram.barcelona",
-        "com.zhiliaoapp.musically", "com.ss.android.ugc.trill",
-        "com.snapchat.android",
-        "com.google.android.youtube", "com.google.android.apps.youtube.music",
-        "com.facebook.katana", "com.facebook.lite",
-        "com.twitter.android",
-        "com.reddit.frontpage"
-    )
-
-    // Settings/installer screens bounced while locked, so the shield can't be
-    // switched off, the app can't be force-stopped, and it can't be uninstalled.
+    // Settings-type apps. Never locked as a whole: while a lock runs, only their
+    // pages that show "Maatram" (Shield toggle, App info / Force stop, Device
+    // admin, uninstall dialog) are blocked. Wi-Fi, brightness etc. keep working.
     val GUARDED: Set<String> = setOf(
         "com.android.settings",
         "com.android.settings.intelligence",
         "com.android.packageinstaller",
         "com.google.android.packageinstaller",
-    )
-
-    // These system apps also show harmless pop-ups when other apps open
-    // (Xiaomi's "allow app to start" dialogs, Samsung battery tips). Blocking the
-    // whole package bounced every app launch, so only their app-info /
-    // force-stop / permission screens are guarded.
-    private val GUARDED_SCREENS: Map<String, List<String>> = mapOf(
-        "com.miui.securitycenter" to listOf("appmanager", "applicationsdetails", "permcenter", "autostart"),
-        "com.samsung.android.sm" to listOf("appmanagement", "appdetail"),
-        "com.samsung.android.lool" to listOf("appmanagement", "appdetail")
+        "com.miui.securitycenter",
+        "com.samsung.android.sm",
+        "com.samsung.android.lool",
     )
 
     fun isLocked(ctx: Context): Boolean = remainingMs(ctx) > 0L
@@ -59,11 +42,15 @@ object LockManager {
         return if (left > 0L) left else 0L
     }
 
-    /** The apps locked during a Hard Lock: the user's picks, or DEFAULTS if never picked. */
+    /** Exactly the apps the user ticked. Nothing pre-ticked, nothing added. */
     fun lockedApps(ctx: Context): Set<String> {
         val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        return if (p.contains(KEY_APPS)) p.getStringSet(KEY_APPS, emptySet()) ?: emptySet()
-        else DEFAULTS
+        // One-time reset: older versions pre-ticked a default list (YouTube,
+        // Instagram...) that got saved with the user's own picks. Start clean.
+        if (!p.getBoolean("picks_v2", false) && !isLocked(ctx)) {
+            p.edit().remove(KEY_APPS).putBoolean("picks_v2", true).apply()
+        }
+        return p.getStringSet(KEY_APPS, emptySet()) ?: emptySet()
     }
 
     fun setLockedApps(ctx: Context, pkgs: Set<String>) {
@@ -71,10 +58,8 @@ object LockManager {
             .edit().putStringSet(KEY_APPS, HashSet(pkgs)).apply()
     }
 
-    // Only the picked apps, plus Settings/installer so the lock can't be removed.
-    fun isBlocked(ctx: Context, pkg: String, cls: String = ""): Boolean =
-        pkg in GUARDED || pkg in lockedApps(ctx) ||
-            GUARDED_SCREENS[pkg]?.any { cls.contains(it, ignoreCase = true) } == true
+    /** Only the picked apps. Settings pages are handled by BlockerService's guard. */
+    fun isBlocked(ctx: Context, pkg: String): Boolean = pkg in lockedApps(ctx)
 
     /** Starts a lock for [minutes] (clamped to 1..MAX_MINUTES), arms the end alarm and notifies. */
     fun start(ctx: Context, minutes: Int, scheduled: Boolean = false) {
