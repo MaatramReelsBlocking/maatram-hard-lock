@@ -68,6 +68,7 @@ object LockManager {
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putLong(KEY_END, end).apply()
         scheduleEnd(ctx, end)
+        Garden.begin(ctx, m, end)
         LockEvents.started(ctx, m, end, scheduled)
     }
 
@@ -94,6 +95,7 @@ object LockManager {
     /** Re-arm the end alarm after a reboot, or clear if the time already passed. */
     fun reconcileAfterBoot(ctx: Context) {
         val end = endTime(ctx)
+        Garden.settle(ctx); PlantWidget.refresh(ctx)
         if (end <= System.currentTimeMillis()) clear(ctx) else { scheduleEnd(ctx, end); LockEvents.rearm(ctx) }
     }
 

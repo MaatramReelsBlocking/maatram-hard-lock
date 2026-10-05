@@ -3,4 +3,6 @@
     <string name="app_name">Maatram Hard Lock</string>
     <string name="shield_label">Maatram Focus Shield</string>
     <string name="shield_desc">Blocks distracting apps while a Maatram Hard Lock is running. Turns off blocking automatically when the lock ends.</string>
+    <string name="widget_desc">Your sakura grows while Hard Lock runs. Shows the time left and your garden streak.</string>
+    <string name="widget_plant_desc">Sakura tree</string>
 </resources>

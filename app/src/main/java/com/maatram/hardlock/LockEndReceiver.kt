@@ -11,6 +11,8 @@ class LockEndReceiver : BroadcastReceiver() {
         val end = LockManager.endTime(context)
         val finished = end > 0L && end <= System.currentTimeMillis() + 5_000L
         LockManager.clear(context)
+        Garden.settle(context)
+        PlantWidget.refresh(context)
         if (finished) LockEvents.ended(context)
     }
 }

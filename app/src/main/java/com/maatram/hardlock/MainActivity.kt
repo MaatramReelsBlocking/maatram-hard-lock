@@ -18,6 +18,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -31,7 +32,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -151,6 +155,8 @@ private fun App() {
         onDispose { owner.lifecycle.removeObserver(obs) }
     }
     val locked = remember(tick) { LockManager.isLocked(ctx) }
+    // A finished lock plants its tree in the garden (once), even if the end alarm was late.
+    LaunchedEffect(locked) { if (!locked && Garden.settle(ctx)) PlantWidget.refresh(ctx) }
     // Permissions only change while we're in Settings, so check on resume, not every second.
     val shield = remember(resumes) { accessibilityOn(ctx) }
     val admin = remember(resumes) { adminOn(ctx) }
@@ -194,38 +200,74 @@ private fun App() {
     }
 }
 
+/** The sakura, drawn by PlantArt (same art as the widget). */
+@Composable
+private fun Sakura(progress: Float, leaves: Int, done: Boolean, modifier: Modifier) =
+    Canvas(modifier.clip(RoundedCornerShape(28.dp))) {
+        drawIntoCanvas { PlantArt.draw(it.nativeCanvas, size.width, size.height, progress, leaves, PlantArt.hourNow(), done) }
+    }
+
+private fun appLabel(ctx: Context, pkg: String): String =
+    try { ctx.packageManager.getApplicationLabel(ctx.packageManager.getApplicationInfo(pkg, 0)).toString() } catch (_: Exception) { pkg }
+
 @Composable
 private fun LockedScreen(ctx: Context, shield: Boolean) {
     val leftMs = LockManager.remainingMs(ctx)
     val total = (leftMs + 59_999L) / 60_000L
     val mm = leftMs / 60_000L
     val ss = (leftMs % 60_000L) / 1000L
+    val cur = Garden.current(ctx)
+    val span = cur?.let { (it.end - it.start).coerceAtLeast(1L) } ?: (total * 60_000L).coerceAtLeast(1L)
+    val progress = (1f - leftMs.toFloat() / span).coerceIn(0f, 1f)
+    val leaves = cur?.leaves ?: 0
+    val stage = when {
+        progress < 0.05f -> "Seed planted"
+        progress < 0.3f -> "Sprouting"
+        progress < 0.6f -> "Growing"
+        progress < 0.9f -> "Blooming"
+        else -> "Almost in full bloom"
+    }
     Column(
-        Modifier.fillMaxSize().padding(28.dp),
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 28.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text("🔒", fontSize = 64.sp)
-        Spacer(Modifier.height(20.dp))
-        Text("HARD LOCK ACTIVE", color = ACCENT, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-        Spacer(Modifier.height(12.dp))
+        Sakura(progress, leaves, false, Modifier.fillMaxWidth().aspectRatio(1.05f))
+        Spacer(Modifier.height(18.dp))
+        Text("HARD LOCK ACTIVE · ${stage.uppercase()}", color = ACCENT, fontWeight = FontWeight.Bold, fontSize = 13.sp, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(6.dp))
         Text(
             String.format("%02d:%02d", mm, ss),
-            color = INK, fontWeight = FontWeight.Bold, fontSize = 68.sp
+            color = INK, fontWeight = FontWeight.Bold, fontSize = 56.sp
         )
-        Spacer(Modifier.height(8.dp))
-        Text("$total min remaining", color = DIM, fontSize = 15.sp)
-        Spacer(Modifier.height(28.dp))
+        Text("$total min left · your sakura grows while you focus", color = DIM, fontSize = 13.sp, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(16.dp))
+        Card {
+            Column(Modifier.padding(16.dp)) {
+                if (leaves == 0) {
+                    Text("No leaves lost. Clean focus so far.", color = ACCENT, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    Spacer(Modifier.height(2.dp))
+                    Text("Each time you try a locked app, the tree drops a leaf.", color = DIM, fontSize = 12.sp, lineHeight = 17.sp)
+                } else {
+                    Text("$leaves leaf${if (leaves == 1) "" else "s"} dropped", color = Color(0xFFC9A55A), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    Spacer(Modifier.height(2.dp))
+                    val tried = remember(cur?.tries) {
+                        cur?.tries.orEmpty().entries.sortedByDescending { it.value }.take(3)
+                            .joinToString(", ") { "${appLabel(ctx, it.key)} ${it.value}x" }
+                    }
+                    Text("Tried: $tried", color = DIM, fontSize = 12.sp, lineHeight = 17.sp)
+                }
+            }
+        }
+        Spacer(Modifier.height(14.dp))
         Text(
-            "Distracting apps are blocked and the lock cannot be cancelled. " +
-                "It ends on its own when the timer reaches zero.",
-            color = DIM, fontSize = 14.sp, textAlign = TextAlign.Center,
-            lineHeight = 20.sp
+            "The lock cannot be cancelled. It ends on its own when the timer reaches zero.",
+            color = DIM, fontSize = 12.sp, textAlign = TextAlign.Center, lineHeight = 17.sp
         )
         // Force-stopping the app (e.g. "Clear all" on some phones) switches the
         // Shield off in Android itself. Say so instead of pretending to be locked.
         if (!shield) {
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(20.dp))
             Text(
                 "The Shield was switched off, so nothing is blocked right now. Turn it back on.",
                 color = DANGER, fontSize = 14.sp, textAlign = TextAlign.Center
@@ -236,6 +278,60 @@ private fun LockedScreen(ctx: Context, shield: Boolean) {
                     Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 )
             }
+        }
+    }
+}
+
+/** My Garden: streak, trees planted, the last 4 weeks (gaps show missed days) and the last tree. */
+@Composable
+private fun GardenCard(ctx: Context) {
+    val plants = remember { Garden.plants(ctx) }
+    val streak = remember(plants) { Garden.streak(plants) }
+    val days = remember(plants) { Garden.lastDays(plants, 28) }
+    Card {
+        Column(Modifier.padding(18.dp)) {
+            Text("My garden", color = INK, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                if (plants.isEmpty()) "Finish a Hard Lock to plant your first sakura."
+                else "${plants.size} tree${if (plants.size == 1) "" else "s"} · ${plants.sumOf { it.minutes }} min focused" +
+                    if (streak > 0) " · $streak day streak" else "",
+                color = if (plants.isEmpty()) DIM else ACCENT, fontSize = 13.sp, lineHeight = 18.sp
+            )
+            val last = plants.lastOrNull()
+            if (last != null) {
+                Spacer(Modifier.height(12.dp))
+                Sakura(1f, last.leaves, true, Modifier.fillMaxWidth().height(170.dp))
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Last tree: ${last.minutes} min · " + if (last.leaves == 0) "no leaves lost" else "${last.leaves} leaf${if (last.leaves == 1) "" else "s"} lost",
+                    color = DIM, fontSize = 12.sp
+                )
+            }
+            Spacer(Modifier.height(14.dp))
+            Text("Last 4 weeks", color = DIM, fontSize = 12.sp)
+            Spacer(Modifier.height(8.dp))
+            days.chunked(7).forEachIndexed { w, week ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    week.forEachIndexed { d, mins ->
+                        val today = w == 3 && d == 6
+                        Box(
+                            Modifier.size(30.dp).clip(RoundedCornerShape(9.dp))
+                                .background(if (mins > 0) Color(0x33F6BCCD) else CARD),
+                            Alignment.Center
+                        ) {
+                            if (mins > 0) {
+                                val r = (8 + (mins.coerceAtMost(90) / 90f) * 7).dp
+                                Box(Modifier.size(r).clip(RoundedCornerShape(50)).background(Color(0xFFF19BB5)))
+                            } else if (today) {
+                                Box(Modifier.size(6.dp).clip(RoundedCornerShape(50)).background(ACCENT))
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+            }
+            Text("Pink = a tree planted that day. Empty = a missed day.", color = DIM, fontSize = 11.sp)
         }
     }
 }
@@ -326,6 +422,9 @@ private fun SetupScreen(
                 fontWeight = FontWeight.Bold, fontSize = 16.sp
             )
         }
+
+        Spacer(Modifier.height(22.dp))
+        GardenCard(ctx)
 
         Spacer(Modifier.height(22.dp))
         Text("Setup", color = INK, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)

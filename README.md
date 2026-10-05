@@ -4,6 +4,19 @@ Standalone focus-lock app. Start a Hard Lock for a set time; distracting apps
 are blocked and the lock can't be cancelled — it ends on its own when the timer
 runs out. Pure Kotlin + Jetpack Compose, no login, no server, works offline.
 
+## Version 2.0: the sakura
+
+- **Your sakura grows while you focus.** The lock screen shows a seed that
+  sprouts, grows and blooms as the timer runs (`PlantArt.kt`).
+- **Temptation drops leaves.** Each time you open a locked app the tree drops a
+  leaf, and the screen shows which apps you tried.
+- **My garden.** Every finished lock plants a tree: streak, total trees, and a
+  4-week grid where empty squares show missed days (`Garden.kt`).
+- **Real-time sky.** Sunrise, day, sunset and a starry night behind the tree,
+  following the phone's clock.
+- **Home-screen widget** (`PlantWidget.kt`): the growing tree with a live
+  countdown during a lock, or your streak and last tree otherwise.
+
 ## How the lock holds (Accessibility + Device Admin)
 
 - **Focus Shield** (an AccessibilityService) watches which app comes to the

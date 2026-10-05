@@ -122,7 +122,7 @@ object LockEvents {
         val total = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt(KEY_TOTAL, 0)
         val nm = nm(ctx)
         nm.cancel(ID_START); nm.cancel(ID_MILESTONE)
-        post(ctx, ID_END, "Hard Lock finished", (if (total > 0) "$total min done. " else "") + "Your apps are unlocked. Nice work.")
+        post(ctx, ID_END, "Your sakura bloomed", (if (total > 0) "$total min done. " else "") + "A new tree is in your garden and your apps are unlocked.")
     }
 
     fun error(ctx: Context, title: String, text: String, tap: PendingIntent = openApp(ctx)) =

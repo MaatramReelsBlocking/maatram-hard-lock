@@ -58,7 +58,7 @@ class BlockerService : AccessibilityService() {
         if (pkg == packageName) return
         val cls = event?.className?.toString().orEmpty()
         when {
-            LockManager.isBlocked(this, pkg) -> block(pkg)
+            LockManager.isBlocked(this, pkg) -> { Garden.tempted(this, pkg); block(pkg) }
             isRecents(pkg, cls) -> block(pkg, "Recents")
             pkg in LockManager.GUARDED -> guard(pkg)
         }
