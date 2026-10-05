@@ -81,12 +81,12 @@ class PlantWidget : AppWidgetProvider() {
             return v
         }
 
-        /** 360x300 bitmap with rounded corners (RemoteViews can't clip). */
+        /** 600x500 bitmap with rounded corners (RemoteViews can't clip): sharp on high-density screens. */
         private fun art(progress: Float, leaves: Int, done: Boolean): Bitmap {
-            val w = 360; val h = 300
+            val w = 600; val h = 500
             val b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
             val c = Canvas(b)
-            val clip = Path().apply { addRoundRect(RectF(0f, 0f, w.toFloat(), h.toFloat()), 36f, 36f, Path.Direction.CW) }
+            val clip = Path().apply { addRoundRect(RectF(0f, 0f, w.toFloat(), h.toFloat()), 60f, 60f, Path.Direction.CW) }
             c.clipPath(clip)
             PlantArt.draw(c, w.toFloat(), h.toFloat(), progress, leaves, PlantArt.hourNow(), done)
             return b

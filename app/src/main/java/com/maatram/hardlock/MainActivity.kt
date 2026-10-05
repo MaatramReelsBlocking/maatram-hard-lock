@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -200,12 +201,41 @@ private fun App() {
     }
 }
 
-/** The sakura, drawn by PlantArt (same art as the widget). */
+/**
+ * The sakura, drawn by PlantArt (same art as the widget and the website).
+ * The scene is painted into a bitmap off the main thread whenever it visibly changes
+ * (every 0.5% of growth, a dropped leaf, each quarter hour of sky); petals drift over it.
+ */
 @Composable
-private fun Sakura(progress: Float, leaves: Int, done: Boolean, modifier: Modifier) =
-    Canvas(modifier.clip(RoundedCornerShape(28.dp))) {
-        drawIntoCanvas { PlantArt.draw(it.nativeCanvas, size.width, size.height, progress, leaves, PlantArt.hourNow(), done) }
+private fun Sakura(progress: Float, leaves: Int, done: Boolean, modifier: Modifier) {
+    val ctx = LocalContext.current
+    var px by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+    var scene by remember { mutableStateOf<ImageBitmap?>(null) }
+    val step = (progress.coerceIn(0f, 1f) * 200).toInt()
+    val skyQ = (PlantArt.hourNow() * 4).toInt()
+    LaunchedEffect(px, step, leaves, done, skyQ) {
+        if (px.width <= 0 || px.height <= 0) return@LaunchedEffect
+        scene = withContext(Dispatchers.Default) {
+            val b = android.graphics.Bitmap.createBitmap(px.width, px.height, android.graphics.Bitmap.Config.ARGB_8888)
+            PlantArt.draw(android.graphics.Canvas(b), px.width.toFloat(), px.height.toFloat(), step / 200f, leaves, skyQ / 4f, done)
+            b.asImageBitmap()
+        }
     }
+    val amount = PlantArt.petalAmount(progress, done)
+    val motion = remember {
+        Settings.Global.getFloat(ctx.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f
+    }
+    var sec by remember { mutableStateOf(9f) }
+    if (amount > 0f && motion) LaunchedEffect(Unit) {
+        val t0 = withFrameNanos { it }
+        while (true) withFrameNanos { sec = (it - t0) / 1_000_000_000f }
+    }
+    Canvas(modifier.clip(RoundedCornerShape(28.dp)).onSizeChanged { px = it }) {
+        val img = scene
+        if (img != null) drawImage(img) else drawRect(Color(0xFF101A14))
+        if (amount > 0f) drawIntoCanvas { PlantArt.petals(it.nativeCanvas, size.width, size.height, sec, amount * 0.75f) }
+    }
+}
 
 private fun appLabel(ctx: Context, pkg: String): String =
     try { ctx.packageManager.getApplicationLabel(ctx.packageManager.getApplicationInfo(pkg, 0)).toString() } catch (_: Exception) { pkg }
