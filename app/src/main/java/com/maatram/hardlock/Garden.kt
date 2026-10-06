@@ -20,6 +20,14 @@ object Garden {
     private fun p(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     fun begin(ctx: Context, minutes: Int, end: Long) {
+        val running = current(ctx)
+        if (running != null && System.currentTimeMillis() < running.end) {
+            // Same lock, made longer (e.g. a linked device locked for longer): keep growing this tree.
+            val total = ((end - running.start) / 60_000L).toInt().coerceIn(running.minutes, LockManager.MAX_MINUTES)
+            p(ctx).edit().putLong("cur_end", maxOf(end, running.end)).putInt("cur_min", total).apply()
+            PlantWidget.refresh(ctx)
+            return
+        }
         settle(ctx)
         p(ctx).edit()
             .putLong("cur_start", System.currentTimeMillis()).putLong("cur_end", end)

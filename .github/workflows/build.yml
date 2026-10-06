@@ -23,7 +23,24 @@ jobs:
         with:
           gradle-version: "8.9"
 
+      # Same key every build so updates install over the old app. Set the repo secrets
+      # KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD once (see README).
+      - name: Load signing key
+        env:
+          KS: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KS" ]; then
+            echo "$KS" | base64 -d > "$RUNNER_TEMP/maatram.jks"
+            echo "MAATRAM_KEYSTORE=$RUNNER_TEMP/maatram.jks" >> "$GITHUB_ENV"
+          else
+            echo "::warning::No KEYSTORE_BASE64 secret: this APK gets a one-off debug key and will not install over the previous build."
+          fi
+
       - name: Build debug APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: gradle assembleDebug --no-daemon
 
       - name: Name APK and hash it

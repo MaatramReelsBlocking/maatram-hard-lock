@@ -57,7 +57,7 @@ class PlantWidget : AppWidgetProvider() {
                 v.setChronometer(R.id.w_timer, SystemClock.elapsedRealtime() + LockManager.remainingMs(ctx), null, true)
                 v.setChronometerCountDown(R.id.w_timer, true)
                 v.setTextViewText(R.id.w_sub,
-                    if (cur.leaves == 0) "No leaves lost yet" else "${cur.leaves} leaf${if (cur.leaves == 1) "" else "s"} dropped")
+                    if (cur.leaves == 0) "No leaves lost yet" else "${cur.leaves} ${if (cur.leaves == 1) "leaf" else "leaves"} dropped")
             } else {
                 val last = plants.lastOrNull()
                 bmp = if (last != null) art(ctx, SakuraArt.target(last.minutes), last.leaves) else art(ctx, 0f, 0)

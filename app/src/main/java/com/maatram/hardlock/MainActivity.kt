@@ -103,7 +103,7 @@ private fun GhostButton(text: String, onClick: () -> Unit) =
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Motivation.handleIntent(this, intent)
+        if (savedInstanceState == null) Motivation.handleIntent(this, intent)
         Motivation.scheduleNext(this)
         LockSchedule.arm(this)
         setContent { App() }
@@ -265,7 +265,7 @@ private fun LockedScreen(ctx: Context, shield: Boolean) {
                     Spacer(Modifier.height(2.dp))
                     Text("Each time you try a locked app, the tree drops a leaf.", color = DIM, fontSize = 12.sp, lineHeight = 17.sp)
                 } else {
-                    Text("$leaves leaf${if (leaves == 1) "" else "s"} dropped", color = Color(0xFFC9A55A), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    Text("$leaves ${if (leaves == 1) "leaf" else "leaves"} dropped", color = Color(0xFFC9A55A), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                     Spacer(Modifier.height(2.dp))
                     val tried = remember(cur?.tries) {
                         cur?.tries.orEmpty().entries.sortedByDescending { it.value }.take(3)
@@ -322,7 +322,7 @@ private fun GardenCard(ctx: Context) {
                 Spacer(Modifier.height(6.dp))
                 Text(
                     "Last tree: ${last.minutes} min, ${if (SakuraArt.isFull(last.minutes)) "full tree" else "blooming tree"} · " +
-                        if (last.leaves == 0) "no leaves lost" else "${last.leaves} leaf${if (last.leaves == 1) "" else "s"} lost",
+                        if (last.leaves == 0) "no leaves lost" else "${last.leaves} ${if (last.leaves == 1) "leaf" else "leaves"} lost",
                     color = DIM, fontSize = 12.sp
                 )
             }
@@ -837,7 +837,7 @@ private fun AppPicker(ctx: Context, resumes: Int, onDone: () -> Unit) {
             val q = query.trim()
             // Most screen time first (longest bar on top), then every other app A-Z.
             val sorted = remember(list, usage) { list.sortedWith(compareByDescending<AppItem> { usage[it.pkg] ?: 0L }.thenBy { it.label.lowercase() }) }
-            val top = usage.values.maxOrNull() ?: 0L
+            val top = remember(list, usage) { list.maxOfOrNull { usage[it.pkg] ?: 0L } ?: 0L }
             val shown = if (q.isEmpty()) sorted else sorted.filter { it.label.contains(q, ignoreCase = true) }
             LazyColumn(Modifier.fillMaxSize()) {
                 items(shown, key = { it.pkg }) { app ->

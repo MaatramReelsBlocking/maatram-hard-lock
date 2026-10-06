@@ -11,14 +11,28 @@ android {
         applicationId = "com.maatram.hardlock"
         minSdk = 26
         targetSdk = 34
-        versionCode = 16
-        versionName = "2.4-alpha"
+        versionCode = 17
+        versionName = "2.4.1-alpha"
+    }
+
+    // One fixed signing key for every build, so a new APK installs over the old one (no uninstall,
+    // garden and settings kept). CI reads it from the KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS and KEY_PASSWORD secrets;
+    // without them it falls back to a throwaway debug key (each build then needs an uninstall).
+    val ks = System.getenv("MAATRAM_KEYSTORE")?.let { file(it) }?.takeIf { it.exists() }
+    signingConfigs {
+        if (ks != null) create("maatram") {
+            storeFile = ks
+            storePassword = System.getenv("KEYSTORE_PASSWORD")
+            keyAlias = System.getenv("KEY_ALIAS")?.takeIf { it.isNotBlank() } ?: "maatram"
+            keyPassword = System.getenv("KEY_PASSWORD")?.takeIf { it.isNotBlank() } ?: System.getenv("KEYSTORE_PASSWORD")
+        }
     }
 
     buildTypes {
         // CI ships the debug build, so shrink it too: R8 strips unused Compose/AndroidX
         // code and resources (much smaller APK, faster cold start).
         debug {
+            if (ks != null) signingConfig = signingConfigs.getByName("maatram")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")

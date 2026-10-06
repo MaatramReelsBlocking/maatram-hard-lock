@@ -79,6 +79,7 @@ object LockManager {
         Garden.begin(ctx, m, end)
         LockEvents.started(ctx, m, end, scheduled)
         if (!fromLink) Link.push(ctx, m)
+        BlockerService.lockStarted()
     }
 
     /** Same checks as the Start button: Shield on, background running allowed, at least one installed app picked. */

@@ -7,7 +7,7 @@ runs out. Pure Kotlin + Jetpack Compose, no login, no server, works offline.
 ## Version 2.0: the sakura
 
 - **Your sakura grows while you focus.** The lock screen shows a seed that
-  sprouts, grows and blooms as the timer runs (`PlantArt.kt`).
+  sprouts, grows and blooms as the timer runs (`SakuraArt.kt`).
 - **Temptation drops leaves.** Each time you open a locked app the tree drops a
   leaf, and the screen shows which apps you tried.
 - **My garden.** Every finished lock plants a tree: streak, total trees, and a
@@ -31,9 +31,13 @@ runs out. Pure Kotlin + Jetpack Compose, no login, no server, works offline.
 - **The lock is time-based and survives reboots and crashes.** It always ends on
   its own (max 90 min).
 
-Only the apps you pick are blocked. Instagram, YouTube, TikTok, Snapchat, X,
-Facebook, Reddit and Threads are ticked by default, and you can untick any of
-them. Every app you don't pick keeps working.
+Only the apps you pick are blocked. Nothing is ticked by default; the picker
+sorts your apps by screen time (with Usage access) so the heavy ones are on top.
+Every app you don't pick keeps working.
+
+**Linked devices.** Type the link code from maatram.co.in (App Gate) under
+*Link devices*: a Hard Lock started on the website, in the Chrome extension or
+here locks all of them (`Link.kt`).
 
 ## Get the APK (GitHub Actions — no Android Studio)
 
@@ -41,11 +45,16 @@ them. Every app you don't pick keeps working.
 2. Open the **Actions** tab → the **Build APK** run → download the
    **maatram-hardlock-debug** artifact → install the APK on the phone.
 
-The debug APK needs no setup. For a proper release-signed APK (recommended for
-sharing, avoids Play Protect warnings), add these repo **Secrets** and the same
-workflow builds a signed one:
+**Signing key (do this once).** Without it every build is signed with a new
+throwaway key, so a new APK won't install over the old one ("App not installed")
+and you have to uninstall, losing your garden and settings. Add these repo
+**Secrets** (Settings → Secrets and variables → Actions) and every build after
+that uses the same key:
 
 `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`
+
+(`KEY_ALIAS` defaults to `maatram`; `KEY_PASSWORD` defaults to `KEYSTORE_PASSWORD`.)
+Keep the keystore file and password safe: losing them means one more uninstall.
 
 Make a keystore with:
 ```

@@ -44,8 +44,20 @@ class BlockerService : AccessibilityService() {
             flags = AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS
             notificationTimeout = 0L
         }
+        instance = this
         keepAlive(LockManager.isLocked(this))
         ui.removeCallbacks(linkTick); ui.post(linkTick)
+    }
+
+    /** A lock just started or got longer: arm the notification and block the app already on screen. */
+    private fun onLockStarted() {
+        keepAlive(true)
+        ui.removeCallbacks(endCheck)
+        ui.postDelayed(endCheck, LockManager.remainingMs(this) + 1_000L)
+        try {
+            val pkg = rootInActiveWindow?.packageName?.toString() ?: return
+            if (pkg != packageName && LockManager.isBlocked(this, pkg)) block(pkg)
+        } catch (_: Exception) { /* no window to check */ }
     }
 
     /** Linked devices: about once a minute, pick up a Hard Lock started on the website or in Chrome. */
@@ -142,10 +154,13 @@ class BlockerService : AccessibilityService() {
         } catch (_: Exception) { /* notification is a bonus; blocking still works */ }
     }
 
-    private val endCheck = Runnable {
-        val on = LockManager.isLocked(this)
-        keepAlive(on)
-        if (!on) hideCard.run()
+    private val endCheck = object : Runnable {
+        override fun run() {
+            val on = LockManager.isLocked(this@BlockerService)
+            keepAlive(on)
+            if (!on) hideCard.run()
+            else ui.postDelayed(this, LockManager.remainingMs(this@BlockerService) + 1_000L)   // lock was extended
+        }
     }
 
     private fun dp(v: Int) = TypedValue.applyDimension(
@@ -225,13 +240,18 @@ class BlockerService : AccessibilityService() {
 
     // Service can be switched off while the card is showing; don't leak the window.
     override fun onDestroy() {
+        if (instance === this) instance = null
         ui.removeCallbacksAndMessages(null)
         hideCard.run()
         super.onDestroy()
     }
 
-    private companion object {
-        const val CHANNEL = "hard_lock"
-        const val NOTIF_ID = 1
+    companion object {
+        private const val CHANNEL = "hard_lock"
+        private const val NOTIF_ID = 1
+        @Volatile private var instance: BlockerService? = null
+
+        /** Called by LockManager from any thread. */
+        fun lockStarted() { instance?.let { s -> s.ui.post { s.onLockStarted() } } }
     }
 }
