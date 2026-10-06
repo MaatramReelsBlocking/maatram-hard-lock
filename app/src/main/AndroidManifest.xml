@@ -12,6 +12,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Usage access (granted by the user in Settings) so the app picker can sort apps by screen time. -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
 
     <!-- Lets the app list launchable apps so the user can pick which ones to lock
          (Android 11+ package visibility). No QUERY_ALL_PACKAGES needed. -->

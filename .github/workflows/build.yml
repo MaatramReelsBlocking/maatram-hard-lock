@@ -28,7 +28,10 @@ jobs:
 
       - name: Name APK and hash it
         run: |
+          VERSION=$(grep -o 'versionName = "[^"]*"' app/build.gradle.kts | cut -d'"' -f2)
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           cp app/build/outputs/apk/debug/app-debug.apk maatram-hardlock.apk
+          cp maatram-hardlock.apk "maatram-hardlock-v$VERSION.apk"
           sha256sum maatram-hardlock.apk > maatram-hardlock.apk.sha256
           cat maatram-hardlock.apk.sha256
 
@@ -42,9 +45,10 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: Maatram Hard Lock (build ${{ github.run_number }})
+          name: Maatram Hard Lock ${{ env.VERSION }} (build ${{ github.run_number }})
           body_path: maatram-hardlock.apk.sha256
           make_latest: true
           files: |
             maatram-hardlock.apk
+            maatram-hardlock-v${{ env.VERSION }}.apk
             maatram-hardlock.apk.sha256

@@ -8,9 +8,6 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Path
-import android.graphics.RectF
 import android.os.SystemClock
 import android.view.View
 import android.widget.RemoteViews
@@ -54,8 +51,8 @@ class PlantWidget : AppWidgetProvider() {
             if (locked && cur != null) {
                 val total = (cur.end - cur.start).coerceAtLeast(1L)
                 val progress = 1f - LockManager.remainingMs(ctx).toFloat() / total
-                bmp = art(progress, cur.leaves, false)
-                v.setTextViewText(R.id.w_title, "Hard Lock · growing")
+                bmp = art(ctx, SakuraArt.growth(progress, cur.minutes), cur.leaves)
+                v.setTextViewText(R.id.w_title, if (SakuraArt.isFull(cur.minutes)) "Hard Lock · growing a full tree" else "Hard Lock · growing")
                 v.setViewVisibility(R.id.w_timer, View.VISIBLE)
                 v.setChronometer(R.id.w_timer, SystemClock.elapsedRealtime() + LockManager.remainingMs(ctx), null, true)
                 v.setChronometerCountDown(R.id.w_timer, true)
@@ -63,7 +60,7 @@ class PlantWidget : AppWidgetProvider() {
                     if (cur.leaves == 0) "No leaves lost yet" else "${cur.leaves} leaf${if (cur.leaves == 1) "" else "s"} dropped")
             } else {
                 val last = plants.lastOrNull()
-                bmp = if (last != null) art(1f, last.leaves, true) else art(0f, 0, false)
+                bmp = if (last != null) art(ctx, SakuraArt.target(last.minutes), last.leaves) else art(ctx, 0f, 0)
                 val streak = Garden.streak(plants)
                 v.setTextViewText(R.id.w_title, if (streak > 0) "$streak day streak" else "My garden")
                 v.setViewVisibility(R.id.w_timer, View.GONE)
@@ -81,16 +78,8 @@ class PlantWidget : AppWidgetProvider() {
             return v
         }
 
-        /** 600x500 bitmap with rounded corners (RemoteViews can't clip): sharp on high-density screens. */
-        private fun art(progress: Float, leaves: Int, done: Boolean): Bitmap {
-            val w = 600; val h = 500
-            val b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-            val c = Canvas(b)
-            val clip = Path().apply { addRoundRect(RectF(0f, 0f, w.toFloat(), h.toFloat()), 60f, 60f, Path.Direction.CW) }
-            c.clipPath(clip)
-            PlantArt.draw(c, w.toFloat(), h.toFloat(), progress, leaves, PlantArt.hourNow(), done)
-            return b
-        }
+        /** 600x500 sakura picture with rounded corners. */
+        private fun art(ctx: Context, g: Float, leaves: Int): Bitmap = SakuraArt.bitmap(ctx, 600, 500, g, leaves)
 
         private fun tickIntent(ctx: Context): PendingIntent = PendingIntent.getBroadcast(
             ctx, 4002, Intent(ctx, PlantWidget::class.java).setAction(ACTION_TICK),

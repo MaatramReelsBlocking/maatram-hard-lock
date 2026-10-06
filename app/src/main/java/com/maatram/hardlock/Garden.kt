@@ -88,6 +88,13 @@ object Garden {
         return n
     }
 
+    /** Last [n] days, oldest first: the longest lock finished that day in minutes (0 = gap). 90+ = a full tree. */
+    fun lastDaysBest(plants: List<Plant>, n: Int = 28): List<Int> {
+        val byDay = plants.groupBy { dayKey(it.end) }.mapValues { e -> e.value.maxOf { it.minutes } }
+        val c = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -(n - 1)) }
+        return List(n) { (byDay[dayKey(c.timeInMillis)] ?: 0).also { c.add(Calendar.DAY_OF_YEAR, 1) } }
+    }
+
     /** Last [n] days, oldest first: minutes planted per day (0 = gap). */
     fun lastDays(plants: List<Plant>, n: Int = 28): List<Int> {
         val byDay = plants.groupBy { dayKey(it.end) }.mapValues { e -> e.value.sumOf { it.minutes } }

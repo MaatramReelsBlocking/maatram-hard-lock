@@ -42,7 +42,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -58,15 +57,17 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
-// Same tokens as maatram.co.in (theme.src.js, html.minimal).
-private val BG = Color(0xFF0B0C0B)
-private val CARD = Color(0x0EFFFFFF)       // --card rgba(255,255,255,.055)
-private val STROKE = Color(0x21FFFFFF)     // --stroke rgba(255,255,255,.13)
-private val ACCENT = Color(0xFF9CC0B2)     // --accent sage
-private val INK = Color(0xFFECEFEE)        // --ink
-private val DIM = Color(0xFF8A928E)        // --dim
-private val DANGER = Color(0xFFD98A94)     // --danger
-private val ORB = Color(0xFF9CC0B2)
+// Same neon tokens as maatram.co.in (index.css :root).
+private val BG = Color(0xFF02090C)         // --bg
+private val CARD = Color(0x0FFFFFFF)       // glass card
+private val STROKE = Color(0x332FE38F)     // green hairline
+private val ACCENT = Color(0xFF2FE38F)     // --green
+private val BLUE = Color(0xFF37B6FF)       // --blue
+private val INK = Color(0xFFEAFFF6)        // --ink
+private val DIM = Color(0xFF7DA99B)        // --dim
+private val DANGER = Color(0xFFFF6E8A)     // danger, close to --pink
+private val ORB = Color(0xFF2FE38F)
+private val NEON = Brush.horizontalGradient(listOf(ACCENT, BLUE))
 private val CARD_SHAPE = RoundedCornerShape(24.dp)   // --radius 24px
 private val PILL = RoundedCornerShape(100.dp)        // site buttons are pills
 private val Jakarta = FontFamily(
@@ -81,14 +82,14 @@ private fun Card(modifier: Modifier = Modifier, content: @Composable () -> Unit)
     Surface(color = CARD, shape = CARD_SHAPE, border = BorderStroke(1.dp, STROKE),
         modifier = modifier.fillMaxWidth(), content = content)
 
-/** Primary button: light pill with dark text, like the site's download button. */
+/** Primary button: neon green pill with dark text, like the site's buttons. */
 @Composable
 private fun PrimaryButton(text: String, enabled: Boolean = true, modifier: Modifier = Modifier, onClick: () -> Unit) =
     Button(
         onClick = onClick, enabled = enabled, shape = PILL,
         modifier = modifier.height(54.dp),
         colors = ButtonDefaults.buttonColors(
-            containerColor = INK, contentColor = BG,
+            containerColor = ACCENT, contentColor = BG,
             disabledContainerColor = Color(0x1FFFFFFF), disabledContentColor = DIM
         )
     ) { Text(text, fontWeight = FontWeight.Bold, fontSize = 16.sp) }
@@ -182,18 +183,18 @@ private fun App() {
         ProvideTextStyle(TextStyle(fontFamily = Jakarta)) {
         Box(
             Modifier.fillMaxSize().background(BG).drawBehind {
-                // Two soft sage orbs, same placement as the site.
+                // A green and a blue glow, like the site's neon background.
                 val r1 = size.minDimension * 0.42f
                 drawCircle(Brush.radialGradient(listOf(ORB.copy(alpha = .22f), Color.Transparent),
                     Offset(size.width * .82f, size.height * .12f), r1), r1, Offset(size.width * .82f, size.height * .12f))
                 val r2 = size.minDimension * 0.34f
-                drawCircle(Brush.radialGradient(listOf(ORB.copy(alpha = .16f), Color.Transparent),
+                drawCircle(Brush.radialGradient(listOf(BLUE.copy(alpha = .16f), Color.Transparent),
                     Offset(size.width * .14f, size.height * .78f), r2), r2, Offset(size.width * .14f, size.height * .78f))
             }
         ) {
             when {
                 locked -> LockedScreen(ctx, shield)
-                picking -> AppPicker(ctx) { picking = false }
+                picking -> AppPicker(ctx, resumes) { picking = false }
                 else -> SetupScreen(ctx, shield, admin, battery, onPick = { picking = true }) { tick++ }
             }
         }
@@ -202,37 +203,20 @@ private fun App() {
 }
 
 /**
- * The live sakura (same art as the widget and the website). PlantArt.Scene builds its still
- * layers off the main thread whenever the picture visibly changes (every 0.5% of growth, a
- * dropped leaf, each quarter hour of sky); every frame the tree sways in the wind, grass bends,
- * clouds drift, stars twinkle, birds or fireflies move and petals fall. ~30 fps; a still
- * picture when the phone's animations are turned off.
+ * The sakura (same art as the widget and the website): an animated clip that blooms as you focus.
+ * [g] is growth: 0 = bare and grey, 0.8 = a blooming tree, 1 = the full tree (90-minute locks).
+ * Plays at the clip's own pace; a still frame when the phone's animations are turned off.
  */
 @Composable
-private fun Sakura(progress: Float, leaves: Int, done: Boolean, modifier: Modifier) {
+private fun Sakura(g: Float, leaves: Int, modifier: Modifier) {
     val ctx = LocalContext.current
-    var px by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
-    var scene by remember { mutableStateOf<PlantArt.Scene?>(null) }
-    val step = (progress.coerceIn(0f, 1f) * 200).toInt()
-    val skyQ = (PlantArt.hourNow() * 4).toInt()
-    LaunchedEffect(px, step, leaves, done, skyQ) {
-        if (px.width <= 0 || px.height <= 0) return@LaunchedEffect
-        scene = withContext(Dispatchers.Default) { PlantArt.Scene(px.width, px.height, step / 200f, leaves, skyQ / 4f, done) }
-    }
-    val motion = remember {
-        Settings.Global.getFloat(ctx.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f
-    }
-    var sec by remember { mutableStateOf(4f) }
-    if (motion) LaunchedEffect(Unit) {
-        val t0 = withFrameNanos { it }
-        var last = 0L
-        while (true) withFrameNanos { now -> if (now - last >= 33_000_000L) { last = now; sec = 4f + (now - t0) / 1_000_000_000f } }
-    }
-    Canvas(modifier.clip(RoundedCornerShape(28.dp)).onSizeChanged { px = it }) {
-        val sc = scene
-        if (sc == null || sc.w != size.width.toInt() || sc.h != size.height.toInt()) { drawRect(Color(0xFF101A14)); if (sc == null) return@Canvas }
-        val t = sec
-        drawIntoCanvas { sc.frame(it.nativeCanvas, t) }
+    val frames by produceState<List<android.graphics.Bitmap>?>(null) { value = withContext(Dispatchers.IO) { SakuraArt.frames(ctx) } }
+    val motion = remember { Settings.Global.getFloat(ctx.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f }
+    var idx by remember { mutableStateOf(0) }
+    if (motion) LaunchedEffect(Unit) { while (true) { delay(SakuraArt.FRAME_MS); idx = (idx + 1) % SakuraArt.FRAMES.size } }
+    Canvas(modifier.clip(RoundedCornerShape(28.dp)).background(Color(0xFF14080E))) {
+        val f = frames ?: return@Canvas
+        drawIntoCanvas { SakuraArt.draw(it.nativeCanvas, size.width, size.height, f[idx % f.size], g, leaves) }
     }
 }
 
@@ -249,27 +233,27 @@ private fun LockedScreen(ctx: Context, shield: Boolean) {
     val span = cur?.let { (it.end - it.start).coerceAtLeast(1L) } ?: (total * 60_000L).coerceAtLeast(1L)
     val progress = (1f - leftMs.toFloat() / span).coerceIn(0f, 1f)
     val leaves = cur?.leaves ?: 0
-    val stage = when {
-        progress < 0.05f -> "Seed planted"
-        progress < 0.3f -> "Sprouting"
-        progress < 0.6f -> "Growing"
-        progress < 0.9f -> "Blooming"
-        else -> "Almost in full bloom"
-    }
+    val minutes = cur?.minutes ?: total.toInt()
+    val g = SakuraArt.growth(progress, minutes)
+    val stage = SakuraArt.stage(g)
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 28.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Sakura(progress, leaves, false, Modifier.fillMaxWidth().aspectRatio(1.05f))
+        Sakura(g, leaves, Modifier.fillMaxWidth().aspectRatio(1.85f))
         Spacer(Modifier.height(18.dp))
         Text("HARD LOCK ACTIVE · ${stage.uppercase()}", color = ACCENT, fontWeight = FontWeight.Bold, fontSize = 13.sp, textAlign = TextAlign.Center)
         Spacer(Modifier.height(6.dp))
         Text(
             String.format("%02d:%02d", mm, ss),
-            color = INK, fontWeight = FontWeight.Bold, fontSize = 56.sp
+            style = TextStyle(brush = NEON, fontWeight = FontWeight.Bold, fontSize = 56.sp, fontFamily = Jakarta)
         )
-        Text("$total min left · your sakura grows while you focus", color = DIM, fontSize = 13.sp, textAlign = TextAlign.Center)
+        Text(
+            if (SakuraArt.isFull(minutes)) "$total min left · a 90-minute lock grows a full tree"
+            else "$total min left · this lock grows a blooming tree. Lock for 90 min to grow a full tree.",
+            color = DIM, fontSize = 13.sp, textAlign = TextAlign.Center, lineHeight = 18.sp
+        )
         Spacer(Modifier.height(16.dp))
         Card {
             Column(Modifier.padding(16.dp)) {
@@ -316,24 +300,26 @@ private fun LockedScreen(ctx: Context, shield: Boolean) {
 private fun GardenCard(ctx: Context) {
     val plants = remember { Garden.plants(ctx) }
     val streak = remember(plants) { Garden.streak(plants) }
-    val days = remember(plants) { Garden.lastDays(plants, 28) }
+    val days = remember(plants) { Garden.lastDaysBest(plants, 28) }
+    val full = remember(plants) { plants.count { SakuraArt.isFull(it.minutes) } }
     Card {
         Column(Modifier.padding(18.dp)) {
             Text("My garden", color = INK, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
             Spacer(Modifier.height(4.dp))
             Text(
                 if (plants.isEmpty()) "Finish a Hard Lock to plant your first sakura."
-                else "${plants.size} tree${if (plants.size == 1) "" else "s"} · ${plants.sumOf { it.minutes }} min focused" +
+                else "${plants.size} tree${if (plants.size == 1) "" else "s"} ($full full) · ${plants.sumOf { it.minutes }} min focused" +
                     if (streak > 0) " · $streak day streak" else "",
                 color = if (plants.isEmpty()) DIM else ACCENT, fontSize = 13.sp, lineHeight = 18.sp
             )
             val last = plants.lastOrNull()
             if (last != null) {
                 Spacer(Modifier.height(12.dp))
-                Sakura(1f, last.leaves, true, Modifier.fillMaxWidth().height(170.dp))
+                Sakura(SakuraArt.target(last.minutes), last.leaves, Modifier.fillMaxWidth().aspectRatio(1.85f))
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "Last tree: ${last.minutes} min · " + if (last.leaves == 0) "no leaves lost" else "${last.leaves} leaf${if (last.leaves == 1) "" else "s"} lost",
+                    "Last tree: ${last.minutes} min, ${if (SakuraArt.isFull(last.minutes)) "full tree" else "blooming tree"} · " +
+                        if (last.leaves == 0) "no leaves lost" else "${last.leaves} leaf${if (last.leaves == 1) "" else "s"} lost",
                     color = DIM, fontSize = 12.sp
                 )
             }
@@ -350,8 +336,9 @@ private fun GardenCard(ctx: Context) {
                             Alignment.Center
                         ) {
                             if (mins > 0) {
-                                val r = (8 + (mins.coerceAtMost(90) / 90f) * 7).dp
-                                Box(Modifier.size(r).clip(RoundedCornerShape(50)).background(Color(0xFFF19BB5)))
+                                val isFull = SakuraArt.isFull(mins)
+                                Box(Modifier.size(if (isFull) 18.dp else 10.dp).clip(RoundedCornerShape(50))
+                                    .background(if (isFull) Color(0xFFFF6EC7) else Color(0xFFF6B6CA)))
                             } else if (today) {
                                 Box(Modifier.size(6.dp).clip(RoundedCornerShape(50)).background(ACCENT))
                             }
@@ -360,7 +347,7 @@ private fun GardenCard(ctx: Context) {
                 }
                 Spacer(Modifier.height(6.dp))
             }
-            Text("Pink = a tree planted that day. Empty = a missed day.", color = DIM, fontSize = 11.sp)
+            Text("Small dot = a blooming tree. Big dot = a full tree (a 90-minute lock). Empty = a missed day.", color = DIM, fontSize = 11.sp, lineHeight = 15.sp)
         }
     }
 }
@@ -437,7 +424,7 @@ private fun SetupScreen(
             modifier = Modifier.fillMaxWidth().height(56.dp),
             shape = PILL,
             colors = ButtonDefaults.buttonColors(
-                containerColor = INK, contentColor = BG,
+                containerColor = ACCENT, contentColor = BG,
                 disabledContainerColor = Color(0x1FFFFFFF), disabledContentColor = DIM
             )
         ) {
@@ -710,12 +697,36 @@ private fun AppIcon(ctx: Context, pkg: String) {
     else Spacer(Modifier.size(40.dp))
 }
 
+/** Usage access (Settings > Usage access) lets the picker show real screen time. */
+private fun usageAllowed(ctx: Context): Boolean = try {
+    val ops = ctx.getSystemService(Context.APP_OPS_SERVICE) as android.app.AppOpsManager
+    @Suppress("DEPRECATION")
+    val mode = if (Build.VERSION.SDK_INT >= 29)
+        ops.unsafeCheckOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), ctx.packageName)
+    else ops.checkOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), ctx.packageName)
+    mode == android.app.AppOpsManager.MODE_ALLOWED
+} catch (_: Exception) { false }
+
+/** Screen time per app over the last 7 days, in milliseconds. Empty without usage access. */
+private fun weekUsage(ctx: Context): Map<String, Long> = try {
+    val usm = ctx.getSystemService(Context.USAGE_STATS_SERVICE) as android.app.usage.UsageStatsManager
+    val now = System.currentTimeMillis()
+    usm.queryAndAggregateUsageStats(now - 7L * 24 * 3_600_000L, now)
+        .mapValues { it.value.totalTimeInForeground }.filterValues { it >= 60_000L }
+} catch (_: Exception) { emptyMap() }
+
+private fun hm(ms: Long): String { val m = ms / 60_000L; return if (m >= 60) "${m / 60}h ${m % 60}m" else "${m}m" }
+
 @Composable
-private fun AppPicker(ctx: Context, onDone: () -> Unit) {
+private fun AppPicker(ctx: Context, resumes: Int, onDone: () -> Unit) {
     val chosen = remember { mutableStateListOf<String>().apply { addAll(LockManager.lockedApps(ctx)) } }
     var query by remember { mutableStateOf("") }
     val apps by produceState(appCache) {
         value = withContext(Dispatchers.IO) { loadApps(ctx) }.also { appCache = it }
+    }
+    val allowed = remember(resumes) { usageAllowed(ctx) }
+    val usage by produceState(emptyMap<String, Long>(), allowed) {
+        value = if (allowed) withContext(Dispatchers.IO) { weekUsage(ctx) } else emptyMap()
     }
     // Keep only installed apps, so the count matches what's on the phone.
     val save = {
@@ -731,12 +742,26 @@ private fun AppPicker(ctx: Context, onDone: () -> Unit) {
             Column(Modifier.weight(1f)) {
                 Text("Choose apps to lock", color = INK, fontWeight = FontWeight.Bold, fontSize = 22.sp)
                 Text(
-                    "Only the apps you tick get locked",
+                    if (usage.isNotEmpty()) "Sorted by your screen time, last 7 days" else "Only the apps you tick get locked",
                     color = DIM, fontSize = 13.sp
                 )
             }
             Spacer(Modifier.width(10.dp))
             PrimaryButton("Done", onClick = save)
+        }
+        if (!allowed) {
+            Spacer(Modifier.height(12.dp))
+            Card {
+                Column(Modifier.padding(14.dp)) {
+                    Text("See which apps eat your time", color = INK, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                    Text("Allow Usage access and this list puts your most-used apps first, with their screen time.",
+                        color = DIM, fontSize = 12.sp, lineHeight = 17.sp)
+                    Spacer(Modifier.height(8.dp))
+                    GhostButton("Allow usage access") {
+                        ctx.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    }
+                }
+            }
         }
         Spacer(Modifier.height(12.dp))
         OutlinedTextField(
@@ -759,10 +784,14 @@ private fun AppPicker(ctx: Context, onDone: () -> Unit) {
             }
         } else {
             val q = query.trim()
-            val shown = if (q.isEmpty()) list else list.filter { it.label.contains(q, ignoreCase = true) }
+            // Most screen time first (longest bar on top), then every other app A-Z.
+            val sorted = remember(list, usage) { list.sortedWith(compareByDescending<AppItem> { usage[it.pkg] ?: 0L }.thenBy { it.label.lowercase() }) }
+            val top = usage.values.maxOrNull() ?: 0L
+            val shown = if (q.isEmpty()) sorted else sorted.filter { it.label.contains(q, ignoreCase = true) }
             LazyColumn(Modifier.fillMaxSize()) {
                 items(shown, key = { it.pkg }) { app ->
                     val on = app.pkg in chosen
+                    val ms = usage[app.pkg] ?: 0L
                     Row(
                         Modifier.fillMaxWidth()
                             .clickable { if (on) chosen.remove(app.pkg) else chosen.add(app.pkg) }
@@ -771,7 +800,18 @@ private fun AppPicker(ctx: Context, onDone: () -> Unit) {
                     ) {
                         AppIcon(ctx, app.pkg)
                         Spacer(Modifier.width(14.dp))
-                        Text(app.label, color = INK, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                        Column(Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(app.label, color = INK, fontSize = 15.sp, modifier = Modifier.weight(1f), maxLines = 1)
+                                if (ms > 0) Text(hm(ms), color = ACCENT, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                            if (ms > 0 && top > 0) {
+                                Spacer(Modifier.height(5.dp))
+                                Box(Modifier.fillMaxWidth().height(6.dp).clip(PILL).background(Color(0x14FFFFFF))) {
+                                    Box(Modifier.fillMaxWidth((ms.toFloat() / top).coerceIn(0.03f, 1f)).fillMaxHeight().clip(PILL).background(NEON))
+                                }
+                            }
+                        }
                         Checkbox(
                             checked = on,
                             onCheckedChange = { if (it) chosen.add(app.pkg) else chosen.remove(app.pkg) },
