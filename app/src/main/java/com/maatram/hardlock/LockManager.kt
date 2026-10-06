@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.SystemClock
 
 /**
  * Single source of truth for the lock. State lives in SharedPreferences so it
@@ -16,6 +17,8 @@ object LockManager {
     private const val PREFS = "MaatramLock"
     private const val KEY_END = "lock_end"          // epoch millis, 0 = not locked
     private const val KEY_APPS = "locked_apps"      // exactly the apps the user picked
+    private const val KEY_END_RT = "lock_end_rt"    // end on the uptime clock (immune to clock changes)
+    private const val KEY_BOOT = "lock_boot"        // boot the uptime end belongs to
     const val MAX_MINUTES = 90
 
     // Settings-type apps. Never locked as a whole: while a lock runs, only their
@@ -26,6 +29,7 @@ object LockManager {
         "com.android.settings.intelligence",
         "com.android.packageinstaller",
         "com.google.android.packageinstaller",
+        "com.miui.packageinstaller",
         "com.miui.securitycenter",
         "com.samsung.android.sm",
         "com.samsung.android.lool",
@@ -36,10 +40,24 @@ object LockManager {
     fun endTime(ctx: Context): Long =
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(KEY_END, 0L)
 
+    private fun boot(ctx: Context) =
+        android.provider.Settings.Global.getInt(ctx.contentResolver, android.provider.Settings.Global.BOOT_COUNT, -1)
+
+    /** Pins the end to the uptime clock, so changing the date/time in Settings can't end (or stretch) the lock. */
+    private fun anchor(ctx: Context, leftMs: Long) {
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putLong(KEY_END_RT, SystemClock.elapsedRealtime() + leftMs).putInt(KEY_BOOT, boot(ctx)).apply()
+    }
+
     fun remainingMs(ctx: Context): Long {
-        val end = endTime(ctx)
-        val left = end - System.currentTimeMillis()
-        return if (left > 0L) left else 0L
+        val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val end = p.getLong(KEY_END, 0L)
+        if (end <= 0L) return 0L
+        val rt = p.getLong(KEY_END_RT, 0L)
+        val b = boot(ctx)
+        val left = if (rt > 0L && b >= 0 && p.getInt(KEY_BOOT, -2) == b) rt - SystemClock.elapsedRealtime()
+                   else end - System.currentTimeMillis()          // after a reboot only
+        return left.coerceIn(0L, MAX_MINUTES * 60_000L + 60_000L)
     }
 
     /** Exactly the apps the user ticked. Nothing pre-ticked, nothing added. */
@@ -75,6 +93,7 @@ object LockManager {
         val m = minutes.coerceIn(1, MAX_MINUTES)
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putLong(KEY_END, end).apply()
+        anchor(ctx, end - System.currentTimeMillis())
         scheduleEnd(ctx, end)
         Garden.begin(ctx, m, end)
         LockEvents.started(ctx, m, end, scheduled)
@@ -106,7 +125,8 @@ object LockManager {
     fun reconcileAfterBoot(ctx: Context) {
         val end = endTime(ctx)
         Garden.settle(ctx); PlantWidget.refresh(ctx)
-        if (end <= System.currentTimeMillis()) clear(ctx) else { scheduleEnd(ctx, end); LockEvents.rearm(ctx) }
+        val rem = remainingMs(ctx)
+        if (end <= 0L || rem <= 0L) clear(ctx) else { anchor(ctx, rem); scheduleEnd(ctx, end); LockEvents.rearm(ctx) }
     }
 
     private fun endIntent(ctx: Context): PendingIntent {
@@ -118,14 +138,15 @@ object LockManager {
     private fun scheduleEnd(ctx: Context, end: Long) {
         val am = ctx.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val pi = endIntent(ctx)
+        val at = SystemClock.elapsedRealtime() + remainingMs(ctx)    // uptime clock: clock changes don't move it
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !am.canScheduleExactAlarms()) {
-                am.set(AlarmManager.RTC_WAKEUP, end, pi)
+                am.set(AlarmManager.ELAPSED_REALTIME_WAKEUP, at, pi)
             } else {
-                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, end, pi)
+                am.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, at, pi)
             }
         } catch (_: SecurityException) {
-            am.set(AlarmManager.RTC_WAKEUP, end, pi)
+            am.set(AlarmManager.ELAPSED_REALTIME_WAKEUP, at, pi)
         }
     }
 

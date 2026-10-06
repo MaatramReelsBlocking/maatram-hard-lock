@@ -9,8 +9,8 @@ class LockEndReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         // Only announce a real finish (a lock was set and its time is up).
         val end = LockManager.endTime(context)
-        if (end > System.currentTimeMillis() + 5_000L) return   // lock was extended; its own alarm is set
-        val finished = end > 0L && end <= System.currentTimeMillis() + 5_000L
+        if (LockManager.remainingMs(context) > 5_000L) return   // lock was extended; its own alarm is set
+        val finished = end > 0L
         LockManager.clear(context)
         Garden.settle(context)
         PlantWidget.refresh(context)

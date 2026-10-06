@@ -301,7 +301,7 @@ private fun LockedScreen(ctx: Context, shield: Boolean) {
 /** My Garden: streak, trees planted, the last 4 weeks (gaps show missed days) and the last tree. */
 @Composable
 private fun GardenCard(ctx: Context) {
-    val plants = remember { Garden.plants(ctx) }
+    val plants = remember { if (Garden.settle(ctx)) PlantWidget.refresh(ctx); Garden.plants(ctx) }
     val streak = remember(plants) { Garden.streak(plants) }
     val days = remember(plants) { Garden.lastDaysBest(plants, 28) }
     val full = remember(plants) { plants.count { SakuraArt.isFull(it.minutes) } }
@@ -578,6 +578,13 @@ private fun LinkCard(ctx: Context) {
 @Composable
 private fun ScheduleCard(ctx: Context) {
     var plan by remember { mutableStateOf(LockSchedule.get(ctx)) }
+    // A one-time schedule turns itself off when it fires: re-read it whenever the screen comes back.
+    val life = LocalLifecycleOwner.current
+    DisposableEffect(life) {
+        val o = LifecycleEventObserver { _, e -> if (e == Lifecycle.Event.ON_RESUME) plan = LockSchedule.get(ctx) }
+        life.lifecycle.addObserver(o)
+        onDispose { life.lifecycle.removeObserver(o) }
+    }
     val askNotify = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     fun save(p: LockSchedule.Plan) { plan = p; LockSchedule.set(ctx, p) }
     Card {
@@ -726,7 +733,9 @@ private fun loadApps(ctx: Context): List<AppItem> {
     val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
     val dialer = pm.resolveActivity(Intent(Intent.ACTION_DIAL), PackageManager.MATCH_DEFAULT_ONLY)
         ?.activityInfo?.packageName
-    val skip = LockManager.GUARDED + setOfNotNull(ctx.packageName, dialer)
+    val homes = pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0)
+        .map { it.activityInfo.packageName }   // your launcher: locking it would loop HOME forever
+    val skip = LockManager.GUARDED + homes + setOfNotNull(ctx.packageName, dialer)
     return pm.queryIntentActivities(launcher, 0)
         .distinctBy { it.activityInfo.packageName }
         .filter { it.activityInfo.packageName !in skip }

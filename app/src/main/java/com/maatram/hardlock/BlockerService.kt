@@ -34,6 +34,11 @@ class BlockerService : AccessibilityService() {
     private var card: View? = null
     private var foreground = false
     private var guardPkg = ""
+    // Home-screen apps are never blocked (an older pick could include one: HOME would loop).
+    private val homes by lazy {
+        packageManager.queryIntentActivities(android.content.Intent(android.content.Intent.ACTION_MAIN)
+            .addCategory(android.content.Intent.CATEGORY_HOME), 0).map { it.activityInfo.packageName }.toSet()
+    }
 
     override fun onServiceConnected() {
         // Configure programmatically too — some OEMs ignore the XML.
@@ -56,7 +61,7 @@ class BlockerService : AccessibilityService() {
         ui.postDelayed(endCheck, LockManager.remainingMs(this) + 1_000L)
         try {
             val pkg = rootInActiveWindow?.packageName?.toString() ?: return
-            if (pkg != packageName && LockManager.isBlocked(this, pkg)) block(pkg)
+            if (pkg != packageName && pkg !in homes && LockManager.isBlocked(this, pkg)) block(pkg)
         } catch (_: Exception) { /* no window to check */ }
     }
 
@@ -79,7 +84,7 @@ class BlockerService : AccessibilityService() {
         if (pkg == packageName) return
         val cls = event?.className?.toString().orEmpty()
         when {
-            LockManager.isBlocked(this, pkg) -> { Garden.tempted(this, pkg); block(pkg) }
+            LockManager.isBlocked(this, pkg) && pkg !in homes -> { Garden.tempted(this, pkg); block(pkg) }
             isRecents(pkg, cls) -> block(pkg, "Recents")
             pkg in LockManager.GUARDED -> guard(pkg)
         }

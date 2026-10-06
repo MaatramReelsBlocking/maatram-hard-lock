@@ -68,6 +68,7 @@ object Garden {
     fun settle(ctx: Context): Boolean {
         val c = current(ctx) ?: return false
         if (System.currentTimeMillis() + 5_000L < c.end) return false   // end alarm may fire a few seconds early
+        if (LockManager.endTime(ctx) == c.end && LockManager.remainingMs(ctx) > 5_000L) return false   // clock moved forward: not finished
         val s = p(ctx)
         val line = "${c.end},${c.minutes},${c.leaves}"
         val all = (s.getString("plants", "").orEmpty().split('\n').filter { it.isNotBlank() } + line).takeLast(MAX_PLANTS)

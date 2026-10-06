@@ -317,6 +317,7 @@ object Motivation {
      *  otherwise the app simply opens on the setup screen. */
     fun handleIntent(ctx: Context, intent: Intent?) {
         if (intent == null || !intent.getBooleanExtra(EXTRA_QUICK_LOCK, false)) return
+        if (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0) return   // reopened from Recents, not a new tap
         intent.removeExtra(EXTRA_QUICK_LOCK)
         ctx.getSystemService(NotificationManager::class.java).cancel(NOTIF_ID)
         if (LockManager.canLock(ctx) && !LockManager.isLocked(ctx)) LockManager.start(ctx, QUICK_MINUTES)
