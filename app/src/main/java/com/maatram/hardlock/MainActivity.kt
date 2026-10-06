@@ -163,8 +163,11 @@ private fun App() {
     val shield = remember(resumes) { accessibilityOn(ctx) }
     val admin = remember(resumes) { adminOn(ctx) }
     val battery = remember(resumes) { batteryFree(ctx) }
-    // Tick every second only while locked (countdown); idle setup screen does no work.
+    // Tick every second only while locked (countdown). While idle, notice a lock started
+    // on a linked device (the Shield service fetches it) with a cheap check every 5 s.
     LaunchedEffect(locked) { while (locked) { delay(1000); tick++ } }
+    LaunchedEffect(locked) { while (!locked) { delay(5000); if (LockManager.isLocked(ctx)) tick++ } }
+    LaunchedEffect(resumes) { Link.poll(ctx) }
     // Hide this app's card from Recents while locked, so "Clear all" can't target it.
     LaunchedEffect(locked) {
         try {
@@ -515,12 +518,60 @@ private fun SetupScreen(
         }
 
         Spacer(Modifier.height(22.dp))
+        LinkCard(ctx)
+
+        Spacer(Modifier.height(12.dp))
         ScheduleCard(ctx)
 
         Spacer(Modifier.height(12.dp))
         MotivationCard(ctx)
 
         Spacer(Modifier.height(28.dp))
+    }
+}
+
+/** Linked devices: type the code from maatram.co.in so one Hard Lock locks the website, Chrome and this phone. */
+@Composable
+private fun LinkCard(ctx: Context) {
+    var code by remember { mutableStateOf(Link.code(ctx)) }
+    var input by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf("") }
+    Card {
+        Column(Modifier.padding(18.dp)) {
+            Text("Link devices", color = INK, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+            Spacer(Modifier.height(4.dp))
+            if (code.isNotEmpty()) {
+                Text(
+                    "Linked: ${Link.pretty(code)}. A Hard Lock started on maatram.co.in or in the Chrome extension locks this phone within a minute, and a lock you start here locks them too.",
+                    color = DIM, fontSize = 13.sp, lineHeight = 18.sp
+                )
+                Spacer(Modifier.height(10.dp))
+                GhostButton("Unlink") { Link.setCode(ctx, ""); code = "" }
+            } else {
+                Text(
+                    "Lock everything at once. On maatram.co.in open App Gate, tap Create link code, and type it here.",
+                    color = DIM, fontSize = 13.sp, lineHeight = 18.sp
+                )
+                Spacer(Modifier.height(10.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = input, onValueChange = { input = it.take(9); error = "" },
+                        placeholder = { Text("ABCD-2345") }, singleLine = true, shape = PILL,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = ACCENT, unfocusedBorderColor = STROKE,
+                            focusedTextColor = INK, unfocusedTextColor = INK, cursorColor = ACCENT
+                        ),
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    PrimaryButton("Link") {
+                        if (Link.setCode(ctx, input)) { code = Link.code(ctx); input = "" }
+                        else error = "A link code is 8 letters or digits, like ABCD-2345."
+                    }
+                }
+                if (error.isNotEmpty()) { Spacer(Modifier.height(6.dp)); Text(error, color = DANGER, fontSize = 12.sp) }
+            }
+        }
     }
 }
 

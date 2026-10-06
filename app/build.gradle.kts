@@ -11,8 +11,8 @@ android {
         applicationId = "com.maatram.hardlock"
         minSdk = 26
         targetSdk = 34
-        versionCode = 15
-        versionName = "2.3-alpha"
+        versionCode = 16
+        versionName = "2.4-alpha"
     }
 
     buildTypes {

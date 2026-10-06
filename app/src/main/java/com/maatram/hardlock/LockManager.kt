@@ -64,12 +64,21 @@ object LockManager {
     /** Starts a lock for [minutes] (clamped to 1..MAX_MINUTES), arms the end alarm and notifies. */
     fun start(ctx: Context, minutes: Int, scheduled: Boolean = false) {
         val m = minutes.coerceIn(1, MAX_MINUTES)
-        val end = System.currentTimeMillis() + m * 60_000L
+        startUntil(ctx, System.currentTimeMillis() + m * 60_000L, m, scheduled)
+    }
+
+    /**
+     * Locks until [end]. [fromLink] = started on a linked device (website / Chrome), so it is not
+     * pushed back; a lock started on this phone is pushed so the linked devices lock too.
+     */
+    fun startUntil(ctx: Context, end: Long, minutes: Int, scheduled: Boolean = false, fromLink: Boolean = false) {
+        val m = minutes.coerceIn(1, MAX_MINUTES)
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putLong(KEY_END, end).apply()
         scheduleEnd(ctx, end)
         Garden.begin(ctx, m, end)
         LockEvents.started(ctx, m, end, scheduled)
+        if (!fromLink) Link.push(ctx, m)
     }
 
     /** Same checks as the Start button: Shield on, background running allowed, at least one installed app picked. */

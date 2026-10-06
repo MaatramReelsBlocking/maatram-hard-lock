@@ -45,6 +45,15 @@ class BlockerService : AccessibilityService() {
             notificationTimeout = 0L
         }
         keepAlive(LockManager.isLocked(this))
+        ui.removeCallbacks(linkTick); ui.post(linkTick)
+    }
+
+    /** Linked devices: about once a minute, pick up a Hard Lock started on the website or in Chrome. */
+    private val linkTick = object : Runnable {
+        override fun run() {
+            Link.poll(this@BlockerService)
+            ui.postDelayed(this, 60_000L)
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
