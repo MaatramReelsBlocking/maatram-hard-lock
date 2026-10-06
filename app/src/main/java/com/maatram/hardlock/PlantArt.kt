@@ -3,6 +3,8 @@ package com.maatram.hardlock
 import android.graphics.Canvas
 import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
 import android.graphics.Path
 import android.graphics.RadialGradient
 import android.graphics.RectF
@@ -70,6 +72,7 @@ object PlantArt {
     private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
     private val path = Path()
     private val oval = RectF()
+    private val add = Paint(Paint.ANTI_ALIAS_FLAG).apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.ADD) }
 
     // ---- colour helpers ----
     private fun c(hex: Int) = hex or (0xFF shl 24)
@@ -148,17 +151,29 @@ object PlantArt {
         path.lineTo(-s * 0.18f, -s * 0.5f); path.quadTo(-s * 0.62f, 0f, 0f, s * 0.5f); path.close()
         fill.shader = null; fill.color = col; cv.drawPath(path, fill); cv.restore()
     }
-    private fun flower(cv: Canvas, x: Float, y: Float, r: Float, col: Int, rot: Float) {
-        fill.shader = null; fill.color = col
+    /** One sakura flower: five notched petals, a deeper pink eye and stamens. */
+    private fun blossom(cv: Canvas, x: Float, y: Float, r: Float, col: Int, eye: Int, rot: Float) {
+        path.reset()
         for (k in 0 until 5) {
-            val a = rot + k * 1.2566f
-            cv.drawCircle(x + cos(a) * r * 0.55f, y + sin(a) * r * 0.55f, r * 0.5f, fill)
+            val a = rot + k * 1.2566f; val ca = cos(a); val sa = sin(a); val w = r * 0.62f
+            fun px(u: Float, v: Float) = x + ca * u - sa * v
+            fun py(u: Float, v: Float) = y + sa * u + ca * v
+            path.moveTo(x, y)
+            path.quadTo(px(r * 0.5f, -w), py(r * 0.5f, -w), px(r * 0.95f, -w * 0.5f), py(r * 0.95f, -w * 0.5f))
+            path.lineTo(px(r * 0.82f, 0f), py(r * 0.82f, 0f)); path.lineTo(px(r * 0.95f, w * 0.5f), py(r * 0.95f, w * 0.5f))
+            path.quadTo(px(r * 0.5f, w), py(r * 0.5f, w), x, y)
         }
-        disc(cv, x, y, r * 0.24f, c(0xD9577F)); disc(cv, x, y, r * 0.11f, c(0xFFE6A6))
+        fill.shader = null; fill.color = col; cv.drawPath(path, fill)
+        disc(cv, x, y, r * 0.3f, eye)
+        if (r > 2.2f) {
+            line.color = eye; line.strokeWidth = max(0.5f, r * 0.05f)
+            for (j in 0 until 7) { val b = rot + j * 0.8976f; cv.drawLine(x, y, x + cos(b) * r * 0.48f, y + sin(b) * r * 0.48f, line) }
+            for (m in 0 until 7) { val b2 = rot + m * 0.8976f; disc(cv, x + cos(b2) * r * 0.5f, y + sin(b2) * r * 0.5f, r * 0.06f, c(0xF4D27A)) }
+        }
     }
 
     private fun sunX(L: Light, w: Float) = w * (0.08f + 0.84f * L.tt)
-    private fun sunY(L: Light, h: Float) = h * (0.66f - 0.52f * sin(PI.toFloat() * clamp(L.tt)))
+    private fun sunY(L: Light, h: Float) = h * (if (L.day) 0.66f - 0.52f * sin(PI.toFloat() * clamp(L.tt)) else 0.45f - 0.38f * sin(PI.toFloat() * clamp(L.tt)))
 
     // ---- sky, sun/moon, clouds, mountains, mist ----
     private fun sky(cv: Canvas, w: Float, h: Float, L: Light) {
@@ -171,6 +186,18 @@ object PlantArt {
                 val al = L.night * (0.35f + r.f() * 0.65f) * (1 - y / (h * 0.7f))
                 disc(cv, x, y, s, alpha(-1, al))
                 if (s > h * 0.0042f) glow(cv, x, y, s * 5, c(0xBFD4FF), al * 0.25f)
+            }
+        }
+        // clouds: soft puffs, lit from the sun's side
+        val clouds = arrayOf(floatArrayOf(0.16f, 0.15f, 0.11f), floatArrayOf(0.6f, 0.09f, 0.15f), floatArrayOf(0.88f, 0.25f, 0.08f), floatArrayOf(0.4f, 0.3f, 0.07f))
+        val ccol = if (L.night > 0.5f) mix(c(0x3C4470), c(0x262C52), L.night) else mix(c(0xFFFFFF), c(0xFFC2A6), L.warm)
+        val cal = if (L.night > 0.5f) 0.45f else 0.7f - L.warm * 0.1f
+        for ((j, cl) in clouds.withIndex()) {
+            val rr = Rng(31L + j); val cx = cl[0] * w; val cy = cl[1] * h; val s = cl[2] * w
+            for (k in 0 until 7) {
+                val ox = (rr.f() - 0.5f) * s * 1.6f; val oy = (rr.f() - 0.5f) * s * 0.35f; val pr = s * (0.35f + rr.f() * 0.35f)
+                puff(cv, cx + ox, cy + oy + pr * 0.22f, pr * 1.05f, mix(ccol, L.top, 0.4f), cal * 0.55f)
+                puff(cv, cx + ox, cy + oy, pr, ccol, cal)
             }
         }
         val sx = sunX(L, w); val sy = sunY(L, h); val r = h * 0.045f
@@ -186,17 +213,18 @@ object PlantArt {
             disc(cv, sx + r * 0.25f, sy + r * 0.12f, r * 0.18f, 0x59969182)
             disc(cv, sx - r * 0.3f, sy + r * 0.32f, r * 0.11f, 0x4D969182)
         }
-        // clouds: soft puffs, lit from the sun's side
-        val clouds = arrayOf(floatArrayOf(0.16f, 0.15f, 0.11f), floatArrayOf(0.6f, 0.09f, 0.15f), floatArrayOf(0.88f, 0.25f, 0.08f), floatArrayOf(0.4f, 0.3f, 0.07f))
-        val ccol = if (L.night > 0.5f) mix(c(0x3C4470), c(0x262C52), L.night) else mix(c(0xFFFFFF), c(0xFFC2A6), L.warm)
-        val cal = if (L.night > 0.5f) 0.45f else 0.7f - L.warm * 0.1f
-        for ((j, cl) in clouds.withIndex()) {
-            val rr = Rng(31L + j); val cx = cl[0] * w; val cy = cl[1] * h; val s = cl[2] * w
-            for (k in 0 until 7) {
-                val ox = (rr.f() - 0.5f) * s * 1.6f; val oy = (rr.f() - 0.5f) * s * 0.35f; val pr = s * (0.35f + rr.f() * 0.35f)
-                puff(cv, cx + ox, cy + oy + pr * 0.22f, pr * 1.05f, mix(ccol, L.top, 0.4f), cal * 0.55f)
-                puff(cv, cx + ox, cy + oy, pr, ccol, cal)
+        if (L.day) {                                     // light shafts from the sun, strongest when it is low
+            val near2 = clamp(1 - sin(PI.toFloat() * clamp(L.tt)) * 1.3f); val rr = Rng(808)
+            for (q in 0 until 16) {
+                val ang = PI.toFloat() / 2 + (rr.f() - 0.5f) * 2.2f; val spread = 0.012f + rr.f() * 0.03f; val len2 = h * (0.6f + rr.f() * 0.6f)
+                add.shader = LinearGradient(sx, sy, sx + cos(ang) * len2, sy + sin(ang) * len2,
+                    alpha(c(0xFFE6BE), 0.018f + near2 * 0.04f), alpha(c(0xFFE6BE), 0f), Shader.TileMode.CLAMP)
+                path.reset(); path.moveTo(sx, sy)
+                path.lineTo(sx + cos(ang - spread) * len2, sy + sin(ang - spread) * len2)
+                path.lineTo(sx + cos(ang + spread) * len2, sy + sin(ang + spread) * len2); path.close()
+                cv.drawPath(path, add)
             }
+            add.shader = null
         }
         // layered mountains fading into haze
         ridge(cv, w, h, 101, 0.7f, 0.1f, mix(L.hor, mix(c(0x2E3D63), L.top, 0.4f), 0.38f))
@@ -214,11 +242,12 @@ object PlantArt {
         path.lineTo(w, h); path.lineTo(0f, h); path.close(); cv.drawPath(path, fill); fill.shader = null
         val r = Rng(404); val blade = tint(L, c(0x2D4F2A)); val tipc = tint(L, c(0x8FBF6E))
         line.strokeWidth = max(1f, h * 0.0025f)
-        for (k in 0 until 140) {
+        val mid2 = tint(L, c(0x4E7A3A))
+        for (k in 0 until 260) {
             val x = r.f() * w; val xf = x / w - 0.5f
             val y = gy + h * 0.03f - h * 0.09f * (0.25f - xf * xf) + r.f() * h * 0.12f
-            val len = h * (0.012f + r.f() * 0.02f)
-            line.color = if (r.next() < 0.3) tipc else blade
+            val len = h * (0.01f + r.f() * 0.022f)
+            val pick = r.next(); line.color = if (pick < 0.25) tipc else if (pick < 0.6) mid2 else blade
             path.reset(); path.moveTo(x, y); path.quadTo(x + len * 0.2f, y - len * 0.6f, x + (r.f() - 0.3f) * len * 0.6f, y - len)
             cv.drawPath(path, line)
         }
@@ -233,8 +262,8 @@ object PlantArt {
                 1.3f + (m % 3) * 0.55f, tint(L, if (m % 2 == 1) c(0xB98E3E) else c(0x9C6E2E)))
     }
 
-    /** One limb: a curved, tapering shape with a shadow side and a sunlit side, grown to fraction t. */
-    private fun limb(cv: Canvas, s: Seg, t: Float, sc: Float, cx: Float, by: Float, gw: Float, col: Int, hi: Int, side: Float) {
+    /** One limb: a curved, tapering cylinder (shadow edge, sunlit side) grown to fraction t, with cherry bark. */
+    private fun limb(cv: Canvas, s: Seg, t: Float, sc: Float, cx: Float, by: Float, gw: Float, col: Int, hi: Int, dark: Int, side: Float, si: Int) {
         val bx = s.x0 + (s.qx - s.x0) * t; val byy = s.y0 + (s.qy - s.y0) * t        // de Casteljau split at t
         val mx = s.qx + (s.x1 - s.qx) * t; val my = s.qy + (s.y1 - s.qy) * t
         val ex = bx + (mx - bx) * t; val ey = byy + (my - byy) * t
@@ -245,19 +274,38 @@ object PlantArt {
         }
         val n0 = nrm(s.x0, s.y0, bx, byy); val n1 = nrm(bx, byy, ex, ey); val nm = nrm(s.x0, s.y0, ex, ey)
         val ax = cx + s.x0 * sc; val ay = by + s.y0 * sc; val qx = cx + bx * sc; val qy = by + byy * sc; val px = cx + ex * sc; val py = by + ey * sc
-        fun shape(off: Float, w0: Float, wm: Float, w1: Float) {
-            path.reset()
-            path.moveTo(ax + n0[0] * w0 + off, ay + n0[1] * w0)
-            path.quadTo(qx + nm[0] * wm + off, qy + nm[1] * wm, px + n1[0] * w1 + off, py + n1[1] * w1)
-            path.lineTo(px - n1[0] * w1 + off, py - n1[1] * w1)
-            path.quadTo(qx - nm[0] * wm + off, qy - nm[1] * wm, ax - n0[0] * w0 + off, ay - n0[1] * w0)
-            path.close(); cv.drawPath(path, fill)
-            cv.drawCircle(px + off, py, w1, fill)
+        val hx = (ax + px) / 2; val hy = (ay + py) / 2
+        fill.shader = null; fill.color = col
+        if (rm > 1.6f) {                                 // shade across the limb: a round branch, lit from the sun's side
+            val hl = if (side > 0) 0.7f else 0.3f
+            fill.shader = LinearGradient(hx - nm[0] * rm, hy - nm[1] * rm, hx + nm[0] * rm, hy + nm[1] * rm,
+                intArrayOf(if (side > 0) dark else mix(dark, col, 0.35f), col, hi, col, if (side > 0) mix(dark, col, 0.35f) else dark),
+                floatArrayOf(0f, clamp(hl - 0.28f), hl, clamp(hl + 0.24f), 1f), Shader.TileMode.CLAMP)
         }
-        fill.shader = null; fill.color = col; shape(0f, r0, rm, r1)
-        if (r0 > 1.2f) {                                 // round it: shadow side, then the sunlit side
-            fill.color = alpha(c(0x1E120E), 0.45f); shape(-side * r0 * 0.5f, r0 * 0.45f, rm * 0.45f, r1 * 0.45f)
-            fill.color = alpha(hi, 0.75f); shape(side * r0 * 0.36f, r0 * 0.4f, rm * 0.4f, r1 * 0.4f)
+        cv.drawCircle(ax, ay, r0, fill)                  // joint: hides the seam with the parent limb
+        path.reset()
+        path.moveTo(ax + n0[0] * r0, ay + n0[1] * r0)
+        path.quadTo(qx + nm[0] * rm, qy + nm[1] * rm, px + n1[0] * r1, py + n1[1] * r1)
+        path.lineTo(px - n1[0] * r1, py - n1[1] * r1)
+        path.quadTo(qx - nm[0] * rm, qy - nm[1] * rm, ax - n0[0] * r0, ay - n0[1] * r0)
+        path.close(); cv.drawPath(path, fill)
+        cv.drawCircle(px, py, r1, fill)
+        fill.shader = null
+        if (rm > 3f && s.d <= 3) {                       // bark: horizontal lenticels and a few dark fissures
+            val rr = Rng(2000L + si)
+            val len = sqrt((px - ax) * (px - ax) + (py - ay) * (py - ay)); val n = floor(len / max(3f, rm * 0.55f)).toInt()
+            for (k in 0 until n) {
+                val u = (k + rr.f()) / n; val lx = ax + (px - ax) * u; val ly = ay + (py - ay) * u; val rad = r0 + (r1 - r0) * u
+                val off = (rr.f() - 0.5f) * 1.3f * rad; val ln = rad * (0.18f + rr.f() * 0.3f)
+                line.color = if (rr.next() < 0.55) alpha(hi, 0.45f) else alpha(dark, 0.5f); line.strokeWidth = max(0.6f, rad * 0.07f)
+                cv.drawLine(lx + nm[0] * (off - ln), ly + nm[1] * (off - ln), lx + nm[0] * (off + ln), ly + nm[1] * (off + ln), line)
+            }
+            line.color = alpha(dark, 0.35f); line.strokeWidth = max(0.6f, rm * 0.05f)
+            for (f in 0 until 3) {
+                val o2 = (rr.f() - 0.5f) * 1.2f; val a0 = rr.f() * 0.4f; val a1 = a0 + 0.3f + rr.f() * 0.5f
+                cv.drawLine(ax + (px - ax) * a0 + nm[0] * o2 * r0, ay + (py - ay) * a0 + nm[1] * o2 * r0,
+                    ax + (px - ax) * a1 + nm[0] * o2 * rm, ay + (py - ay) * a1 + nm[1] * o2 * rm, line)
+            }
         }
     }
 
@@ -265,6 +313,11 @@ object PlantArt {
         val r = max(w, h) * 0.78f
         fill.shader = RadialGradient(w / 2, h * 0.45f, r, intArrayOf(0, 0, 0x61000000), floatArrayOf(0f, min(w, h) * 0.35f / r, 1f), Shader.TileMode.CLAMP)
         cv.drawRect(0f, 0f, w, h, fill); fill.shader = null
+        val rr = Rng(909); val n = (w * h / 260f).roundToInt()   // fine film grain, like a photo
+        for (k in 0 until n) {
+            fill.color = if (rr.next() < 0.5) 0x0BFFFFFF else 0x0D000000
+            val gx = rr.f() * w; val gy = rr.f() * h; cv.drawRect(gx, gy, gx + 1, gy + 1, fill)
+        }
     }
 
     /** How strongly petals drift for this state (0..1). */
@@ -283,7 +336,7 @@ object PlantArt {
         ground(cv, w, h, L, bloom, lost)
         val gy = h * 0.84f; val cx = w / 2; val by = gy - h * 0.012f
         val sc = min(h * 0.6f / -minY, w * 0.8f / (maxX - minX)); val g = clamp((p - 0.05f) / 0.95f)
-        val side = if (L.tt < 0.5f) -1f else 1f; val bark = tint(L, c(0x3E2A24)); val barkHi = tint(L, c(0x7A5644))
+        val side = if (L.tt < 0.5f) -1f else 1f; val bark = tint(L, c(0x4A3530)); val barkHi = tint(L, c(0x9C7A68)); val barkDk = tint(L, c(0x1C110D))
         // soft shadow under the tree
         cv.save(); cv.scale(1f, 0.18f, cx, by + h * 0.01f)
         radial(cv, cx, by + h * 0.01f, w * 0.32f * max(0.15f, g), intArrayOf(0x59000000, 0), floatArrayOf(0f, 1f)); cv.restore()
@@ -316,17 +369,21 @@ object PlantArt {
             open += Open(cx + (tp.px + (tp.x - tp.px) * tl) * sc, by + (tp.py + (tp.y - tp.py) * tl) * sc, i, bt, tp.s, tl, tp.d)
         }
         val cr = h * 0.05f; val back = tintBloom(L, c(0xB86A8C)); val mid = tintBloom(L, c(0xE79AB6))
-        for (o in open) if (o.bt > 0f) glow(cv, o.x - cr * 0.3f, o.y - cr * 0.2f, cr * 1.35f * (0.5f + o.bt * 0.5f), back, 0.5f * o.bt)
+        for (o in open) if (o.bt > 0f) glow(cv, o.x - cr * 0.2f, o.y - cr * 0.1f, cr * 0.95f * (0.5f + o.bt * 0.5f), back, 0.4f * o.bt)
 
         val young = mix(tint(L, c(0x6F9F5C)), bark, sap); val youngHi = mix(tint(L, c(0xA8D488)), barkHi, sap)
         val rr = segs[0].r0 * gw * sc                    // root flare where the trunk meets the ground
-        fill.shader = null; fill.color = if (sap < 1f) young else bark
+        val bk0 = if (sap < 1f) young else bark
+        val hp = if (side > 0) floatArrayOf(0f, 0.55f, 0.68f, 0.8f, 1f) else floatArrayOf(0f, 0.2f, 0.32f, 0.45f, 1f)
+        fill.shader = LinearGradient(cx - rr * 2, 0f, cx + rr * 2, 0f,
+            intArrayOf(if (side > 0) barkDk else mix(barkDk, bk0, 0.35f), bk0, barkHi, bk0, if (side > 0) mix(barkDk, bk0, 0.35f) else barkDk), hp, Shader.TileMode.CLAMP)
         path.reset(); path.moveTo(cx - rr * 2.3f, by + h * 0.008f); path.quadTo(cx - rr * 0.95f, by - rr * 0.2f, cx - rr * 0.85f, by - rr * 2.2f)
         path.lineTo(cx + rr * 0.85f, by - rr * 2.2f); path.quadTo(cx + rr * 0.95f, by - rr * 0.2f, cx + rr * 2.3f, by + h * 0.008f); path.close()
-        cv.drawPath(path, fill)
-        for (s in segs) {
+        cv.drawPath(path, fill); fill.shader = null
+        val youngDk = mix(tint(L, c(0x3F6232)), barkDk, sap)
+        for ((si, s) in segs.withIndex()) {
             val local = clamp((g - s.d * 0.115f) / 0.115f); if (local <= 0f) continue
-            limb(cv, s, local, sc, cx, by, gw, if (sap < 1f) young else bark, if (sap < 1f) youngHi else barkHi, side)
+            limb(cv, s, local, sc, cx, by, gw, if (sap < 1f) young else bark, if (sap < 1f) youngHi else barkHi, if (sap < 1f) youngDk else barkDk, side, si)
             if (sap < 1f && local < 1f && local > 0.15f) {   // a sapling's growing shoots carry two small leaves
                 val t2 = local
                 val ex = (1 - t2) * (1 - t2) * s.x0 + 2 * (1 - t2) * t2 * s.qx + t2 * t2 * s.x1
@@ -336,24 +393,34 @@ object PlantArt {
                 leafShape(cv, cx + ex * sc, by + ey * sc, lsz, 0.8f, tint(L, c(0x86B862)))
             }
         }
-        val pal = intArrayOf(0xFFE9EF, 0xFBD0DD, 0xF6B6CA, 0xF09BB4, 0xFFF5F7).map { tintBloom(L, c(it)) }
+        // the crown is lit as one volume: bright on top and toward the sun, deep mauve underneath and inside
+        var ty = 1e9f; var byB = -1e9f; var lx = 1e9f; var rx = -1e9f
+        for (o in open) { ty = min(ty, o.y); byB = max(byB, o.y); lx = min(lx, o.x); rx = max(rx, o.x) }
+        val ccx = (lx + rx) / 2; val chw = max(1f, (rx - lx) / 2); val chh = max(1f, byB - ty)
+        val pal = intArrayOf(0x8E4F6E, 0xB86E8E, 0xDC93AE, 0xF2B9CB, 0xFBD9E3, 0xFFF1F5).map { tintBloom(L, c(it)) }
+        val eyeC = tintBloom(L, c(0xC2456E))
+        fun shadeAt(fx: Float, fy: Float) = clamp(0.95f - (fy - ty) / chh * 0.7f + side * (fx - ccx) / chw * 0.28f - 0.18f * (1 - abs(fx - ccx) / chw))
         for (o in open) {
             val r = Rng(1000L + o.i); val bt = o.bt; val x = o.x; val y = o.y
             if (bt < 1f) {                                // fresh green leaves before the blossoms open
                 val lf = tint(L, c(0x86B862)); val ls = h * 0.028f * o.tl * (1 - bt * 0.7f)
                 for (k in 0 until 3) leafShape(cv, x, y, ls, -1.4f + k * 1.4f + o.s, if (k == 1) tint(L, c(0x9BCB78)) else lf)
             }
-            if (bt <= 0f) continue
-            val crr = cr * (0.75f + o.s * 0.6f) * (if (o.d < 5) 1.35f else 1f)
-            glow(cv, x, y, crr * (0.6f + bt * 0.6f), mid, 0.55f * bt)
-            val nb = (11 * bt).roundToInt()
+            if (bt <= 0f || (o.s > 0.9f && o.d >= 5)) continue    // a few gaps let sky and branches show through
+            val crr = cr * (0.75f + o.s * 0.6f) * (if (o.d < 5) 1.35f else 1f); val base = shadeAt(x, y)
+            glow(cv, x, y + crr * 0.1f, crr * (0.5f + bt * 0.45f), pal[min(5, floor(base * 3).toInt())], 0.75f * bt)
+            val nb = (30 * bt).roundToInt()
             for (b in 0 until nb) {
-                val a = r.f() * 6.283f; val d = sqrt(r.f()) * crr * (0.55f + bt * 0.5f)
-                val fx = x + cos(a) * d; val fy = y + sin(a) * d * 0.8f
-                val lit = clamp(0.5f - (fy - y) / (cr * 2) + side * (fx - x) / (cr * 4))
-                val size = h * (0.0095f + r.f() * 0.007f) * (0.6f + bt * 0.4f)
-                val col = pal[min(4, floor((1 - lit) * 4 + r.f() * 1.2f).toInt())]
-                flower(cv, fx, fy, size, col, r.f() * 6.283f)
+                val a = r.f() * 6.283f; val d = sqrt(r.f()) * crr * (0.5f + bt * 0.5f)
+                val fx = x + cos(a) * d; val fy = y + sin(a) * d * 0.78f
+                val lit = clamp(shadeAt(fx, fy) - (fy - y) / (crr * 3) + (r.f() - 0.5f) * 0.3f); val col = pal[min(5, floor(lit * 5.99f).toInt())]
+                val fr = h * (0.0042f + r.f() * 0.0042f) * (0.6f + bt * 0.4f); val rot = r.f() * 6.283f
+                if (b % 6 == 5) blossom(cv, fx, fy, fr * 1.9f, col, mix(eyeC, col, 0.35f), rot)
+                else {                                    // a little bunch of petals: three overlapping, tilted
+                    fill.shader = null; fill.color = col
+                    for (q in 0 until 3) { val aa = rot + q * 2.094f; cv.drawCircle(fx + cos(aa) * fr * 0.55f, fy + sin(aa) * fr * 0.55f, fr * 0.7f, fill) }
+                    disc(cv, fx - fr * 0.2f, fy - fr * 0.3f, fr * 0.35f, alpha(pal[5], 0.4f * lit))
+                }
             }
         }
         if (done) {                                       // a finished tree lets a few petals go
