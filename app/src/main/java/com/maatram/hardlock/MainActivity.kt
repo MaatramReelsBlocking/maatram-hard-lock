@@ -198,7 +198,7 @@ private fun App() {
             when {
                 locked -> LockedScreen(ctx, shield)
                 picking -> AppPicker(ctx, resumes) { picking = false }
-                else -> SetupScreen(ctx, shield, admin, battery, onPick = { picking = true }) { tick++ }
+                else -> SetupScreen(ctx, shield, admin, battery, resumes, onPick = { picking = true }) { tick++ }
             }
         }
         }
@@ -357,7 +357,7 @@ private fun GardenCard(ctx: Context) {
 
 @Composable
 private fun SetupScreen(
-    ctx: Context, shield: Boolean, admin: Boolean, battery: Boolean,
+    ctx: Context, shield: Boolean, admin: Boolean, battery: Boolean, resumes: Int,
     onPick: () -> Unit, onStarted: () -> Unit
 ) {
     var minutes by remember { mutableStateOf(25) }
@@ -445,11 +445,15 @@ private fun SetupScreen(
         Spacer(Modifier.height(22.dp))
         GardenCard(ctx)
 
+        // Finished steps disappear. If one is switched off later (Shield reset,
+        // battery setting undone), only that step comes back under this heading.
+        if (!shield || !admin || !keepRunning) {
         Spacer(Modifier.height(22.dp))
-        Text("Setup", color = INK, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+        Text("Setup not complete", color = DANGER, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
         Spacer(Modifier.height(10.dp))
+        }
         // Step 1 — Shield
-        StatusCard(
+        if (!shield) StatusCard(
             title = "1 · Focus Shield",
             on = shield,
             onText = "On — blocking is armed",
@@ -462,10 +466,10 @@ private fun SetupScreen(
             )
         }
 
-        Spacer(Modifier.height(12.dp))
+        if (!shield) Spacer(Modifier.height(12.dp))
 
         // Step 2 — Device Admin (optional but recommended)
-        StatusCard(
+        if (!admin) StatusCard(
             title = "2 · Lock protection (recommended)",
             on = admin,
             onText = "On — app can't be uninstalled while locked",
@@ -484,10 +488,10 @@ private fun SetupScreen(
             ctx.startActivity(i)
         }
 
-        Spacer(Modifier.height(12.dp))
+        if (!admin) Spacer(Modifier.height(12.dp))
 
         // Step 3 — keep the Shield alive through Recents "Clear all"
-        StatusCard(
+        if (!keepRunning) StatusCard(
             title = "3 · Keep running (required)",
             on = keepRunning,
             onText = "On — also lock this app in Recents (hold its card, tap the lock)",
@@ -523,8 +527,15 @@ private fun SetupScreen(
         Spacer(Modifier.height(12.dp))
         ScheduleCard(ctx)
 
-        Spacer(Modifier.height(12.dp))
-        MotivationCard(ctx)
+        // Hidden once it's on and notifications are allowed; returns if either is undone.
+        val motivationOn = remember(resumes) { Motivation.isOn(ctx) }
+        val notifyOk = remember(resumes) {
+            ctx.getSystemService(android.app.NotificationManager::class.java).areNotificationsEnabled()
+        }
+        if (!(motivationOn && notifyOk)) {
+            Spacer(Modifier.height(12.dp))
+            MotivationCard(ctx)
+        }
 
         Spacer(Modifier.height(28.dp))
     }
