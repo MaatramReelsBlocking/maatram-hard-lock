@@ -96,7 +96,8 @@ object LockManager {
         anchor(ctx, end - System.currentTimeMillis())
         scheduleEnd(ctx, end)
         Garden.begin(ctx, m, end)
-        LockEvents.started(ctx, m, end, scheduled)
+        // A linked device can extend a running lock: report the whole lock, not just the new part.
+        LockEvents.started(ctx, Garden.current(ctx)?.minutes ?: m, end, scheduled)
         if (!fromLink) Link.push(ctx, m)
         BlockerService.lockStarted()
     }
