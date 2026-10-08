@@ -4,6 +4,8 @@ Standalone focus-lock app. Start a Hard Lock for a set time; distracting apps
 are blocked and the lock can't be cancelled — it ends on its own when the timer
 runs out. Pure Kotlin + Jetpack Compose, no login, no server, works offline.
 
+Website: https://maatram.co.in · Blog: [How to Stop Scrolling Reels: 5 Friction Tricks for Students](https://maatram.co.in/blog-stop-scrolling-reels.html)
+
 ## Version 2.0: the sakura
 
 - **Your sakura grows while you focus.** The lock screen shows a seed that
