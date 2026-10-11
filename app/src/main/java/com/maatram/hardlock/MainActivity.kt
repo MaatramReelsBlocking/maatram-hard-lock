@@ -20,6 +20,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -862,11 +863,33 @@ private fun AppPicker(ctx: Context, resumes: Int, onDone: () -> Unit) {
                             val on = gamesHere.count { it.pkg in chosen }
                             Text(
                                 if (gamesHere.isEmpty()) "None of the top 10 games are installed on this phone."
-                                else "BGMI, Free Fire MAX, COD Mobile, Minecraft, Roblox, Clash of Clans, Clash Royale, Brawl Stars, Subway Surfers, Candy Crush. $on of ${gamesHere.size} installed ones locked.",
+                                else "Tap a logo to lock or unlock that game. $on of ${gamesHere.size} installed ones locked.",
                                 color = DIM, fontSize = 12.sp, lineHeight = 17.sp
                             )
+                            Spacer(Modifier.height(10.dp))
+                            val here = gamesHere.map { it.pkg }.toSet()
+                            Games.TOP10.chunked(5).forEach { rowGames ->
+                                Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    rowGames.forEach { g ->
+                                        val mine = g.packages.filter { it in here }
+                                        val picked = mine.isNotEmpty() && mine.all { it in chosen }
+                                        val shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                                        Image(
+                                            painter = androidx.compose.ui.res.painterResource(g.logo),
+                                            contentDescription = g.name,
+                                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                            alpha = if (mine.isEmpty()) 0.3f else 1f,
+                                            modifier = Modifier.weight(1f).aspectRatio(1f).clip(shape)
+                                                .border(if (picked) 2.dp else 1.dp, if (picked) ACCENT else STROKE, shape)
+                                                .clickable(enabled = mine.isNotEmpty()) {
+                                                    if (picked) chosen.removeAll(mine.toSet()) else mine.forEach { if (it !in chosen) chosen.add(it) }
+                                                }
+                                        )
+                                    }
+                                }
+                            }
                             if (gamesHere.isNotEmpty()) {
-                                Spacer(Modifier.height(8.dp))
+                                Spacer(Modifier.height(4.dp))
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     GhostButton("Lock all games") { gamesHere.forEach { if (it.pkg !in chosen) chosen.add(it.pkg) } }
                                     GhostButton("Clear games") { chosen.removeAll(gamesHere.map { it.pkg }.toSet()) }
