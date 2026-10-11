@@ -19,11 +19,12 @@ object Garden {
 
     private fun p(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    fun begin(ctx: Context, minutes: Int, end: Long) {
+    fun begin(ctx: Context, minutes: Int, end: Long): Unit = synchronized(Garden) {
         val running = current(ctx)
         if (running != null && System.currentTimeMillis() < running.end) {
             // Same lock, made longer (e.g. a linked device locked for longer): keep growing this tree.
-            val total = ((end - running.start) / 60_000L).toInt().coerceIn(running.minutes, LockManager.MAX_MINUTES)
+            val total = ((end - running.start) / 60_000L).toInt()
+                .coerceIn(running.minutes.coerceIn(1, LockManager.MAX_MINUTES), LockManager.MAX_MINUTES)
             p(ctx).edit().putLong("cur_end", maxOf(end, running.end)).putInt("cur_min", total).apply()
             PlantWidget.refresh(ctx)
             return
@@ -65,7 +66,7 @@ object Garden {
     }
 
     /** Plants the finished tree. Returns true if one was planted now. */
-    fun settle(ctx: Context): Boolean {
+    fun settle(ctx: Context): Boolean = synchronized<Boolean>(Garden) {
         val c = current(ctx) ?: return false
         if (System.currentTimeMillis() + 5_000L < c.end) return false   // end alarm may fire a few seconds early
         if (LockManager.endTime(ctx) == c.end && LockManager.remainingMs(ctx) > 5_000L) return false   // clock moved forward: not finished

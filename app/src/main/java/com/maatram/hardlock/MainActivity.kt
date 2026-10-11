@@ -527,15 +527,9 @@ private fun SetupScreen(
         Spacer(Modifier.height(12.dp))
         ScheduleCard(ctx)
 
-        // Hidden once it's on and notifications are allowed; returns if either is undone.
-        val motivationOn = remember(resumes) { Motivation.isOn(ctx) }
-        val notifyOk = remember(resumes) {
-            ctx.getSystemService(android.app.NotificationManager::class.java).areNotificationsEnabled()
-        }
-        if (!(motivationOn && notifyOk)) {
-            Spacer(Modifier.height(12.dp))
-            MotivationCard(ctx)
-        }
+        // Always shown: it holds the only switch that turns the quotes off again.
+        Spacer(Modifier.height(12.dp))
+        MotivationCard(ctx)
 
         Spacer(Modifier.height(28.dp))
     }

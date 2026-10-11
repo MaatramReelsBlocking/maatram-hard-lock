@@ -242,36 +242,40 @@ object Motivation {
         if (on) scheduleNext(ctx) else cancel(ctx)
     }
 
-    private fun alarmIntent(ctx: Context): PendingIntent =
+    const val EXTRA_SLOT = "slot"
+
+    /** One alarm per slot, so losing a firing never stops the chain. */
+    private fun alarmIntent(ctx: Context, slot: Int): PendingIntent =
         PendingIntent.getBroadcast(
-            ctx, 2002,
-            Intent(ctx, MotivationReceiver::class.java).setAction(ACTION_SHOW),
+            ctx, 2010 + slot,
+            Intent(ctx, MotivationReceiver::class.java).setAction(ACTION_SHOW).putExtra(EXTRA_SLOT, slot),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-    /** Arms the next reminder. Inexact on purpose: no exact-alarm permission needed, kind to battery. */
+    /** Arms all five of the day's reminders. Inexact on purpose: no exact-alarm permission needed, kind to battery. */
     fun scheduleNext(ctx: Context) {
         if (!isOn(ctx)) return
         val now = Calendar.getInstance()
-        val next = TIMES.map { (h, m) ->
-            Calendar.getInstance().apply {
+        val am = ctx.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        TIMES.forEachIndexed { slot, (h, m) ->
+            val at = Calendar.getInstance().apply {
                 set(Calendar.HOUR_OF_DAY, h); set(Calendar.MINUTE, m)
                 set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
                 if (!after(now)) add(Calendar.DAY_OF_YEAR, 1)
             }
-        }.minByOrNull { it.timeInMillis } ?: return
-        val am = ctx.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        // Fires even in Doze, within a few minutes of the time. No exact-alarm permission needed.
-        am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, next.timeInMillis, alarmIntent(ctx))
+            // Fires even in Doze, within a few minutes of the time. No exact-alarm permission needed.
+            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at.timeInMillis, alarmIntent(ctx, slot))
+        }
     }
 
     private fun cancel(ctx: Context) {
-        (ctx.getSystemService(Context.ALARM_SERVICE) as AlarmManager).cancel(alarmIntent(ctx))
+        val am = ctx.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        TIMES.indices.forEach { am.cancel(alarmIntent(ctx, it)) }
         ctx.getSystemService(NotificationManager::class.java).cancel(NOTIF_ID)
     }
 
     /** Posts one reminder, unless a lock is already running. */
-    fun show(ctx: Context) {
+    fun show(ctx: Context, slot: Int = -1) {
         if (!isOn(ctx) || LockManager.isLocked(ctx)) return
         val nm = ctx.getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= 33 && !nm.areNotificationsEnabled()) return
@@ -279,12 +283,14 @@ object Motivation {
             NotificationChannel(CHANNEL, "Daily motivation", NotificationManager.IMPORTANCE_HIGH)
                 .apply { description = "Five short lines a day, shown as a pop-up on your screen" }
         )
-        // Which of today's five: the slot nearest the current time. Day number picks the set.
+        // Which of today's five: the slot the alarm was armed for. A late alarm (Doze can
+        // delay one by an hour) must still show ITS line, not whichever slot is nearest now.
         val cal = Calendar.getInstance()
         val nowMin = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
-        val slot = TIMES.indices.minByOrNull { kotlin.math.abs(TIMES[it].first * 60 + TIMES[it].second - nowMin) } ?: 0
+        val idx = if (slot in TIMES.indices) slot
+                  else TIMES.indices.minByOrNull { kotlin.math.abs(TIMES[it].first * 60 + TIMES[it].second - nowMin) } ?: 0
         val day = (System.currentTimeMillis() + java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis())) / 86_400_000L
-        val line = LINES[((day * TIMES.size + slot) % LINES.size).toInt()]
+        val line = LINES[((day * TIMES.size + idx) % LINES.size).toInt()]
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         val open = PendingIntent.getActivity(
             ctx, 2003,
@@ -326,6 +332,9 @@ object Motivation {
 
 class MotivationReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
-        if (intent?.action == Motivation.ACTION_SHOW) { Motivation.show(context); Motivation.scheduleNext(context) }
+        if (intent?.action == Motivation.ACTION_SHOW) {
+            Motivation.show(context, intent.getIntExtra(Motivation.EXTRA_SLOT, -1))
+            Motivation.scheduleNext(context)     // re-arms tomorrow's copy of this slot
+        }
     }
 }

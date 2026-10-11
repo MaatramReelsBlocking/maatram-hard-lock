@@ -125,9 +125,13 @@ object LockManager {
     /** Re-arm the end alarm after a reboot, or clear if the time already passed. */
     fun reconcileAfterBoot(ctx: Context) {
         val end = endTime(ctx)
-        Garden.settle(ctx); PlantWidget.refresh(ctx)
+        val planted = Garden.settle(ctx); PlantWidget.refresh(ctx)
         val rem = remainingMs(ctx)
-        if (end <= 0L || rem <= 0L) clear(ctx) else { anchor(ctx, rem); scheduleEnd(ctx, end); LockEvents.rearm(ctx) }
+        if (end <= 0L || rem <= 0L) {
+            clear(ctx)
+            // The end alarm died with the reboot, so LockEndReceiver never ran: say so now.
+            if (planted) LockEvents.ended(ctx)
+        } else { anchor(ctx, rem); scheduleEnd(ctx, end); LockEvents.rearm(ctx) }
     }
 
     private fun endIntent(ctx: Context): PendingIntent {
