@@ -853,7 +853,29 @@ private fun AppPicker(ctx: Context, resumes: Int, onDone: () -> Unit) {
             val sorted = remember(list, usage) { list.sortedWith(compareByDescending<AppItem> { usage[it.pkg] ?: 0L }.thenBy { it.label.lowercase() }) }
             val top = remember(list, usage) { list.maxOfOrNull { usage[it.pkg] ?: 0L } ?: 0L }
             val shown = if (q.isEmpty()) sorted else sorted.filter { it.label.contains(q, ignoreCase = true) }
+            val gamesHere = remember(list) { list.filter { it.pkg in Games.ALL } }
             LazyColumn(Modifier.fillMaxSize()) {
+                if (q.isEmpty()) item(key = "top10-games") {
+                    Card {
+                        Column(Modifier.padding(14.dp)) {
+                            Text("Top 10 mobile games", color = INK, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                            val on = gamesHere.count { it.pkg in chosen }
+                            Text(
+                                if (gamesHere.isEmpty()) "None of the top 10 games are installed on this phone."
+                                else "BGMI, Free Fire MAX, COD Mobile, Minecraft, Roblox, Clash of Clans, Clash Royale, Brawl Stars, Subway Surfers, Candy Crush. $on of ${gamesHere.size} installed ones locked.",
+                                color = DIM, fontSize = 12.sp, lineHeight = 17.sp
+                            )
+                            if (gamesHere.isNotEmpty()) {
+                                Spacer(Modifier.height(8.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    GhostButton("Lock all games") { gamesHere.forEach { if (it.pkg !in chosen) chosen.add(it.pkg) } }
+                                    GhostButton("Clear games") { chosen.removeAll(gamesHere.map { it.pkg }.toSet()) }
+                                }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
                 items(shown, key = { it.pkg }) { app ->
                     val on = app.pkg in chosen
                     val ms = usage[app.pkg] ?: 0L
