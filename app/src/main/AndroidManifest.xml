@@ -53,6 +53,15 @@
             </intent-filter>
         </activity>
 
+        <!-- Mindful mode: pause screen shown over a picked app when no lock runs -->
+        <activity
+            android:name=".PauseActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=".pause"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.MaatramHardLock" />
+
         <!-- Accessibility service that does the blocking -->
         <service
             android:name=".BlockerService"

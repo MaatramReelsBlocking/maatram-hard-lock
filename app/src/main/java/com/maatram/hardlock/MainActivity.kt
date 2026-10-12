@@ -528,6 +528,9 @@ private fun SetupScreen(
         Spacer(Modifier.height(12.dp))
         ScheduleCard(ctx)
 
+        Spacer(Modifier.height(12.dp))
+        MindfulCard(ctx, picked)
+
         // Always shown: it holds the only switch that turns the quotes off again.
         Spacer(Modifier.height(12.dp))
         MotivationCard(ctx)
@@ -631,6 +634,78 @@ private fun ScheduleCard(ctx: Context) {
             }
             Spacer(Modifier.height(10.dp))
             DurationChips(plan.minutes) { save(plan.copy(minutes = it)) }
+        }
+    }
+}
+
+/** Mindful mode: pause screen + daily limits for the picked apps while no lock runs. */
+@Composable
+private fun MindfulCard(ctx: Context, picked: List<String>) {
+    var on by remember { mutableStateOf(Mindful.pauseOn(ctx)) }
+    var usage by remember { mutableStateOf(usageAllowed(ctx)) }
+    val limits = remember { mutableStateMapOf<String, Int>().apply { picked.forEach { put(it, Mindful.limit(ctx, it)) } } }
+    var note by remember { mutableStateOf("") }
+    val life = LocalLifecycleOwner.current
+    DisposableEffect(life) {
+        val o = LifecycleEventObserver { _, e -> if (e == Lifecycle.Event.ON_RESUME) usage = usageAllowed(ctx) }
+        life.lifecycle.addObserver(o)
+        onDispose { life.lifecycle.removeObserver(o) }
+    }
+    val steps = listOf(0, 15, 30, 45, 60, 90, 120)
+    Card {
+        Column(Modifier.padding(18.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Pause before opening", color = INK, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "When no lock runs, your picked apps open after a short breath. From the 2nd open of the day, a small task too.",
+                        color = DIM, fontSize = 13.sp, lineHeight = 18.sp
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Switch(
+                    checked = on, onCheckedChange = { on = it; Mindful.setPauseOn(ctx, it) },
+                    colors = SwitchDefaults.colors(checkedTrackColor = ACCENT, checkedThumbColor = BG, uncheckedTrackColor = CARD, uncheckedBorderColor = STROKE)
+                )
+            }
+            Spacer(Modifier.height(16.dp))
+            Text("Daily limits", color = INK, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                when {
+                    picked.isEmpty() -> "Pick apps above first."
+                    !usage -> "Needs Usage access to count minutes."
+                    else -> "Tap to change. Used up = closed until midnight, and can't be raised that day."
+                },
+                color = DIM, fontSize = 13.sp, lineHeight = 18.sp
+            )
+            if (!usage && picked.isNotEmpty()) {
+                Spacer(Modifier.height(10.dp))
+                GhostButton("Allow Usage access") {
+                    ctx.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+            } else picked.forEach { pkg ->
+                val m = limits[pkg] ?: 0
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = 52.dp).clickable {
+                        val want = steps[(steps.indexOf(m).coerceAtLeast(0) + 1) % steps.size]
+                        val kept = Mindful.setLimit(ctx, pkg, want)
+                        limits[pkg] = kept
+                        note = if (kept != want) "${appLabel(ctx, pkg)}: limit already used up today, kept at $kept min." else ""
+                    },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    AppIcon(ctx, pkg)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(appLabel(ctx, pkg), color = INK, fontSize = 14.sp)
+                        Text("${Mindful.usedMs(ctx, pkg) / 60_000L} min today", color = DIM, fontSize = 12.sp)
+                    }
+                    Text(if (m > 0) "$m min/day" else "No limit", color = if (m > 0) ACCENT else DIM, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                }
+            }
+            if (note.isNotEmpty()) { Spacer(Modifier.height(6.dp)); Text(note, color = DANGER, fontSize = 12.sp) }
         }
     }
 }
