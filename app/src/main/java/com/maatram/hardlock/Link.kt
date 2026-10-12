@@ -24,19 +24,22 @@ object Link {
 
     /** Saves a code typed by the user ("abcd-2345" is fine). Returns false if it isn't a valid code. Blank unlinks. */
     fun setCode(ctx: Context, raw: String): Boolean {
-        val c = raw.uppercase().filter { it.isLetterOrDigit() }
-        if (c.isNotEmpty() && !CODE.matches(c)) return false
+        val c = normalize(raw)
+        if (c.isNotEmpty() && !isCode(c)) return false
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("code", c).apply()
         if (c.isNotEmpty()) poll(ctx)
         return true
     }
+
+    internal fun normalize(raw: String) = raw.uppercase().filter { it.isLetterOrDigit() }
+    internal fun isCode(c: String) = CODE.matches(c)
 
     fun pretty(c: String) = if (c.length == 8) c.take(4) + "-" + c.drop(4) else c
 
     /** Checks the link and starts the shared lock here if it is newer or longer than ours. */
     fun poll(ctx: Context) {
         val app = ctx.applicationContext
-        val c = code(app); if (!CODE.matches(c)) return
+        val c = code(app); if (!isCode(c)) return
         io.execute {
             try {
                 val con = (URL("$API?code=$c").openConnection() as HttpURLConnection).apply {
@@ -44,17 +47,25 @@ object Link {
                 }
                 if (con.responseCode != 200) return@execute
                 val d = JSONObject(con.inputStream.bufferedReader().readText())
-                val serverEnd = d.optLong("end"); val serverNow = d.optLong("now"); val minutes = d.optInt("minutes")
-                val end = serverEnd + (System.currentTimeMillis() - serverNow)      // correct for this phone's clock
-                if (serverEnd > serverNow + 3_000L && end > LockManager.endTime(app) + 5_000L && minutes > 0)
-                    LockManager.startUntil(app, end, minutes, fromLink = true)
+                val minutes = d.optInt("minutes")
+                val end = linkedEnd(d.optLong("end"), d.optLong("now"), minutes, System.currentTimeMillis(), LockManager.endTime(app))
+                if (end != null) LockManager.startUntil(app, end, minutes, fromLink = true)
             } catch (_: Exception) { /* offline: try again next minute */ }
         }
     }
 
+    /**
+     * The end to lock until for a link reply, moved onto this phone's clock, or null when the
+     * shared lock is over (or ends within 3 s), has no minutes, or isn't over 5 s past ours.
+     */
+    internal fun linkedEnd(serverEnd: Long, serverNow: Long, minutes: Int, localNow: Long, ourEnd: Long): Long? {
+        val end = serverEnd + (localNow - serverNow)
+        return end.takeIf { serverEnd > serverNow + 3_000L && it > ourEnd + 5_000L && minutes > 0 }
+    }
+
     /** Tells the other linked devices about a lock started on this phone. */
     fun push(ctx: Context, minutes: Int) {
-        val c = code(ctx.applicationContext); if (!CODE.matches(c)) return
+        val c = code(ctx.applicationContext); if (!isCode(c)) return
         io.execute {
             try {
                 val con = (URL(API).openConnection() as HttpURLConnection).apply {

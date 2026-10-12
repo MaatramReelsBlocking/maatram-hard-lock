@@ -51,12 +51,16 @@ object LockManager {
 
     fun remainingMs(ctx: Context): Long {
         val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val end = p.getLong(KEY_END, 0L)
-        if (end <= 0L) return 0L
-        val rt = p.getLong(KEY_END_RT, 0L)
         val b = boot(ctx)
-        val left = if (rt > 0L && b >= 0 && p.getInt(KEY_BOOT, -2) == b) rt - SystemClock.elapsedRealtime()
-                   else end - System.currentTimeMillis()          // after a reboot only
+        return remaining(p.getLong(KEY_END, 0L), p.getLong(KEY_END_RT, 0L), b >= 0 && p.getInt(KEY_BOOT, -2) == b,
+            SystemClock.elapsedRealtime(), System.currentTimeMillis())
+    }
+
+    /** Pure part of [remainingMs]: uptime end on the same boot, wall-clock end after a reboot, capped. */
+    internal fun remaining(end: Long, endRt: Long, sameBoot: Boolean, elapsed: Long, wall: Long): Long {
+        if (end <= 0L) return 0L
+        val left = if (endRt > 0L && sameBoot) endRt - elapsed
+                   else end - wall          // after a reboot only
         return left.coerceIn(0L, MAX_MINUTES * 60_000L + 60_000L)
     }
 
