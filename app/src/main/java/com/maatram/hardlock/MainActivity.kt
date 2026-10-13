@@ -196,11 +196,14 @@ private fun App() {
                     Offset(size.width * .14f, size.height * .78f), r2), r2, Offset(size.width * .14f, size.height * .78f))
             }
         ) {
-            // New users: ask once for a review (not mid-lock).
+            // Ask for a review at most once a week (never mid-lock).
             val sp = remember { ctx.getSharedPreferences("MaatramLock", Context.MODE_PRIVATE) }
-            var askSurvey by remember { mutableStateOf(!sp.getBoolean("survey_asked", false)) }
+            var askSurvey by remember {
+                mutableStateOf(System.currentTimeMillis() - sp.getLong("survey_shown_at", 0L) > 7 * 86_400_000L)
+            }
             if (askSurvey && !locked) {
-                val close = { sp.edit().putBoolean("survey_asked", true).apply(); askSurvey = false }
+                LaunchedEffect(Unit) { sp.edit().putLong("survey_shown_at", System.currentTimeMillis()).apply() }
+                val close = { askSurvey = false }
                 AlertDialog(
                     onDismissRequest = close, containerColor = BG, shape = CARD_SHAPE,
                     modifier = Modifier.border(1.dp, STROKE, CARD_SHAPE),
