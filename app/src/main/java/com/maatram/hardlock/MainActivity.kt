@@ -689,10 +689,12 @@ private fun MindfulCard(ctx: Context, picked: List<String>) {
                 val m = limits[pkg] ?: 0
                 Row(
                     Modifier.fillMaxWidth().heightIn(min = 52.dp).clickable {
-                        val want = steps[(steps.indexOf(m).coerceAtLeast(0) + 1) % steps.size]
+                        // Used up today: only lowering is allowed, so step down instead of up.
+                        val want = if (Mindful.overLimit(ctx, pkg)) steps.lastOrNull { it in 1 until m } ?: m
+                            else steps[(steps.indexOf(m).coerceAtLeast(0) + 1) % steps.size]
                         val kept = Mindful.setLimit(ctx, pkg, want)
                         limits[pkg] = kept
-                        note = if (kept != want) "${appLabel(ctx, pkg)}: limit already used up today, kept at $kept min." else ""
+                        note = if (kept != want || want == m) "${appLabel(ctx, pkg)}: limit already used up today, kept at $kept min." else ""
                     },
                     verticalAlignment = Alignment.CenterVertically
                 ) {

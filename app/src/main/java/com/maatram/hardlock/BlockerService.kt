@@ -119,7 +119,8 @@ class BlockerService : AccessibilityService() {
     private val mindfulTick = object : Runnable {
         override fun run() {
             val pkg = fgPkg
-            if (!LockManager.isLocked(this@BlockerService) && pkg != packageName && pkg !in homes &&
+            val screenOn = (getSystemService(POWER_SERVICE) as android.os.PowerManager).isInteractive
+            if (screenOn && !LockManager.isLocked(this@BlockerService) && pkg != packageName && pkg !in homes &&
                 LockManager.isBlocked(this@BlockerService, pkg)
             ) {
                 val g = Mindful.graceEnd(this@BlockerService, pkg)
