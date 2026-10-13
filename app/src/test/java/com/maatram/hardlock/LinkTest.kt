@@ -52,4 +52,10 @@ class LinkTest {
         assertEquals(shared, Link.linkedEnd(shared, now, 30, now, shared - 5_001L))
         assertEquals(shared, Link.linkedEnd(shared, now, 30, now, now + 10 * min))
     }
+
+    @Test fun linkedEndRejectsBadReplies() {
+        val now = 1_000_000_000L
+        assertNull(Link.linkedEnd(now + 30 * min, 0L, 30, now, 0L))                          // no server time
+        assertEquals(now + LockManager.MAX_MINUTES * min, Link.linkedEnd(now + 3 * 1440 * min, now, 30, now, 0L))  // days away: capped
+    }
 }
