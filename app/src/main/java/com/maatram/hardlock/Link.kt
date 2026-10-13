@@ -45,8 +45,10 @@ object Link {
                 val con = (URL("$API?code=$c").openConnection() as HttpURLConnection).apply {
                     connectTimeout = 8000; readTimeout = 8000; useCaches = false
                 }
-                if (con.responseCode != 200) return@execute
-                val d = JSONObject(con.inputStream.bufferedReader().readText())
+                val d = try {
+                    if (con.responseCode != 200) return@execute
+                    JSONObject(con.inputStream.bufferedReader().use { it.readText() })
+                } finally { con.disconnect() }
                 val minutes = d.optInt("minutes")
                 val end = linkedEnd(d.optLong("end"), d.optLong("now"), minutes, System.currentTimeMillis(), LockManager.endTime(app))
                 if (end != null) LockManager.startUntil(app, end, minutes, fromLink = true)
@@ -57,9 +59,12 @@ object Link {
     /**
      * The end to lock until for a link reply, moved onto this phone's clock, or null when the
      * shared lock is over (or ends within 3 s), has no minutes, or isn't over 5 s past ours.
+     * Capped at the longest lock, so a bad reply (no server time, or an end days away) can't
+     * leave a lock that never ends.
      */
     internal fun linkedEnd(serverEnd: Long, serverNow: Long, minutes: Int, localNow: Long, ourEnd: Long): Long? {
-        val end = serverEnd + (localNow - serverNow)
+        if (serverNow <= 0L) return null
+        val end = minOf(serverEnd + (localNow - serverNow), localNow + LockManager.MAX_MINUTES * 60_000L)
         return end.takeIf { serverEnd > serverNow + 3_000L && it > ourEnd + 5_000L && minutes > 0 }
     }
 
@@ -72,8 +77,10 @@ object Link {
                     requestMethod = "POST"; doOutput = true; connectTimeout = 8000; readTimeout = 8000
                     setRequestProperty("Content-Type", "application/json")
                 }
-                con.outputStream.use { it.write(JSONObject().put("code", c).put("minutes", minutes).put("by", "phone").toString().toByteArray()) }
-                con.responseCode
+                try {
+                    con.outputStream.use { it.write(JSONObject().put("code", c).put("minutes", minutes).put("by", "phone").toString().toByteArray()) }
+                    con.responseCode
+                } finally { con.disconnect() }
             } catch (_: Exception) {}
         }
     }

@@ -67,21 +67,39 @@ object Mindful {
     fun usedMs(ctx: Context, pkg: String): Long = try {
         val usm = ctx.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val now = System.currentTimeMillis()
-        val ev = usm.queryEvents(midnight(), now)
+        val from = midnight()
+        val ev = usm.queryEvents(from, now)
         val e = UsageEvents.Event()
-        var total = 0L; var since = -1L
+        val list = ArrayList<Triple<Int, String, Long>>()
         while (ev.hasNextEvent()) {
             ev.getNextEvent(e)
-            if (e.packageName != pkg) continue
-            when (e.eventType) {
-                UsageEvents.Event.ACTIVITY_RESUMED -> if (since < 0) since = e.timeStamp
-                UsageEvents.Event.ACTIVITY_PAUSED, UsageEvents.Event.ACTIVITY_STOPPED ->
-                    if (since >= 0) { total += e.timeStamp - since; since = -1 }
+            if (e.packageName == pkg) list += Triple(e.eventType, e.className.orEmpty(), e.timeStamp)
+        }
+        foregroundMs(list, from, now)
+    } catch (_: Exception) { 0L }
+
+    /**
+     * Pure part of [usedMs]: time any activity of the app was resumed, from (type, activity, time) events.
+     * Tracked per activity, because moving between screens gives A paused, B resumed, A stopped and
+     * A's stop must not end B's time. A pause with no resume since [from] was open at midnight.
+     */
+    internal fun foregroundMs(events: List<Triple<Int, String, Long>>, from: Long, now: Long): Long {
+        val open = HashSet<String>()
+        val seen = HashSet<String>()
+        var total = 0L; var since = -1L
+        for ((type, cls, t) in events) {
+            when (type) {
+                UsageEvents.Event.ACTIVITY_RESUMED -> { if (open.isEmpty()) since = t; open += cls }
+                UsageEvents.Event.ACTIVITY_PAUSED, UsageEvents.Event.ACTIVITY_STOPPED -> when {
+                    open.remove(cls) -> if (open.isEmpty()) { total += t - since; since = -1L }
+                    type == UsageEvents.Event.ACTIVITY_PAUSED && cls !in seen && open.isEmpty() -> total += t - from
+                }
             }
+            seen += cls
         }
         if (since >= 0) total += now - since
-        total
-    } catch (_: Exception) { 0L }
+        return total
+    }
 
     fun overLimit(ctx: Context, pkg: String): Boolean {
         val l = limit(ctx, pkg)

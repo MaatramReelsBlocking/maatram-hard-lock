@@ -86,7 +86,9 @@ object LockManager {
     /** Starts a lock for [minutes] (clamped to 1..MAX_MINUTES), arms the end alarm and notifies. */
     fun start(ctx: Context, minutes: Int, scheduled: Boolean = false) {
         val m = minutes.coerceIn(1, MAX_MINUTES)
-        startUntil(ctx, System.currentTimeMillis() + m * 60_000L, m, scheduled)
+        // Never shorten a running lock (a linked one can arrive while the screen still shows Start).
+        val now = System.currentTimeMillis()
+        startUntil(ctx, now + maxOf(m * 60_000L, remainingMs(ctx)), m, scheduled)
     }
 
     /**
