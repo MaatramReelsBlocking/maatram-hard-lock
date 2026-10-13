@@ -19,6 +19,20 @@ Website: https://maatram.co.in · Blog: [How to Stop Scrolling Reels: 5 Friction
 - **Home-screen widget** (`PlantWidget.kt`): the growing tree with a live
   countdown during a lock, or your streak and last tree otherwise.
 
+## Version 2.5 beta: mindful mode
+
+Outside a lock, for the apps you picked (`Mindful.kt`):
+
+- **Pause before opening** (switch, off by default). Opening a picked app shows
+  a breathing screen first: 8 seconds, doubled for each open in the last hour
+  (max 32). From the 2nd open of the day you also solve a quick sum or type
+  "I choose to open <app>". Then pick 2, 5 or 10 minutes; when they run out
+  the app is sent home.
+- **Daily limits.** Tap an app to cycle 15 / 30 / 45 / 60 / 90 / 120 min a day.
+  Minutes come from Android's own usage events (needs Usage access). Once used
+  up, the app is sent home until midnight, and that limit can't be raised or
+  removed the same day.
+
 ## How the lock holds (Accessibility + Device Admin)
 
 - **Focus Shield** (an AccessibilityService) watches which app comes to the
