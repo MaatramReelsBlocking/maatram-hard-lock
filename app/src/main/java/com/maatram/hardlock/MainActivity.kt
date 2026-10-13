@@ -196,6 +196,18 @@ private fun App() {
                     Offset(size.width * .14f, size.height * .78f), r2), r2, Offset(size.width * .14f, size.height * .78f))
             }
         ) {
+            // New users: ask once for a review (not mid-lock).
+            val sp = remember { ctx.getSharedPreferences("MaatramLock", Context.MODE_PRIVATE) }
+            var askSurvey by remember { mutableStateOf(!sp.getBoolean("survey_asked", false)) }
+            if (askSurvey && !locked) {
+                val close = { sp.edit().putBoolean("survey_asked", true).apply(); askSurvey = false }
+                AlertDialog(
+                    onDismissRequest = close, containerColor = BG, shape = CARD_SHAPE,
+                    modifier = Modifier.border(1.dp, STROKE, CARD_SHAPE),
+                    text = { SurveyBody(ctx) },
+                    confirmButton = { TextButton(onClick = close) { Text("Maybe later", color = DIM) } }
+                )
+            }
             when {
                 locked -> LockedScreen(ctx, shield)
                 picking -> AppPicker(ctx, resumes) { picking = false }
@@ -535,6 +547,9 @@ private fun SetupScreen(
         Spacer(Modifier.height(12.dp))
         MotivationCard(ctx)
 
+        Spacer(Modifier.height(12.dp))
+        Card { Column(Modifier.padding(18.dp)) { SurveyBody(ctx) } }
+
         Spacer(Modifier.height(28.dp))
     }
 }
@@ -708,6 +723,44 @@ private fun MindfulCard(ctx: Context, picked: List<String>) {
                 }
             }
             if (note.isNotEmpty()) { Spacer(Modifier.height(6.dp)); Text(note, color = DANGER, fontSize = 12.sp) }
+        }
+    }
+}
+
+private const val SURVEY_URL = "https://maatram.co.in/survey"
+
+/** Rate Maatram: open the survey, or copy / share its short link (mail, WhatsApp, anything). */
+@Composable
+private fun SurveyBody(ctx: Context) {
+    var copied by remember { mutableStateOf(false) }
+    Column {
+        Text("Enjoying Maatram?", color = INK, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+        Spacer(Modifier.height(4.dp))
+        Text("Take our 1-minute survey. Your rating shows up on maatram.co.in/ratings.html.",
+            color = DIM, fontSize = 13.sp, lineHeight = 18.sp)
+        Spacer(Modifier.height(12.dp))
+        PrimaryButton("Take the survey", modifier = Modifier.fillMaxWidth()) {
+            try { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SURVEY_URL))) } catch (_: Exception) {}
+        }
+        Spacer(Modifier.height(12.dp))
+        Text("Share it with a friend", color = DIM, fontSize = 12.sp)
+        Spacer(Modifier.height(6.dp))
+        Row(
+            Modifier.fillMaxWidth().border(1.dp, STROKE, PILL).padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("maatram.co.in/survey", color = INK, fontSize = 14.sp, modifier = Modifier.weight(1f))
+            TextButton(onClick = {
+                (ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                    .setPrimaryClip(android.content.ClipData.newPlainText("Maatram survey", SURVEY_URL))
+                copied = true
+            }) { Text(if (copied) "Copied" else "Copy", color = ACCENT, fontWeight = FontWeight.Bold) }
+            TextButton(onClick = {
+                val send = Intent(Intent.ACTION_SEND).setType("text/plain")
+                    .putExtra(Intent.EXTRA_SUBJECT, "Try Maatram and rate it")
+                    .putExtra(Intent.EXTRA_TEXT, "Maatram helps students cut screen time. Rate it here: $SURVEY_URL")
+                try { ctx.startActivity(Intent.createChooser(send, "Share survey")) } catch (_: Exception) {}
+            }) { Text("Share", color = ACCENT, fontWeight = FontWeight.Bold) }
         }
     }
 }
