@@ -52,6 +52,7 @@ class BlockerService : AccessibilityService() {
         instance = this
         keepAlive(LockManager.isLocked(this))
         ui.removeCallbacks(linkTick); ui.post(linkTick)
+        ui.removeCallbacks(mindfulTick); ui.postDelayed(mindfulTick, 15_000L)
     }
 
     /** A lock just started or got longer: arm the notification and block the app already on screen. */
@@ -76,8 +77,9 @@ class BlockerService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val locked = LockManager.isLocked(this)
         keepAlive(locked)
-        if (!locked) return
         val pkg = event?.packageName?.toString() ?: return
+        if (pkg != "com.android.systemui" && "inputmethod" !in pkg) fgPkg = pkg
+        if (!locked) { mindful(pkg); return }
         // Only the exact app that came to the front. No launcher/Recents guessing:
         // on Xiaomi the launcher runs app-open animations, which looked like
         // "Recents" and made every app launch bounce.
@@ -87,6 +89,50 @@ class BlockerService : AccessibilityService() {
             LockManager.isBlocked(this, pkg) && pkg !in homes -> { Garden.tempted(this, pkg); block(pkg) }
             isRecents(pkg, cls) -> block(pkg, "Recents")
             pkg in LockManager.GUARDED -> guard(pkg)
+        }
+    }
+
+    /* ── Mindful mode (no lock running): daily limits, then the pause screen ── */
+    private var fgPkg = ""
+    private var lastPause = 0L
+
+    private fun mindful(pkg: String) {
+        if (pkg == packageName || pkg in homes || !LockManager.isBlocked(this, pkg)) return
+        val now = System.currentTimeMillis()
+        if (Mindful.overLimit(this, pkg)) { limitHit(pkg); return }
+        if (!Mindful.pauseOn(this) || now < Mindful.graceEnd(this, pkg) || now - lastPause < 1500L) return
+        lastPause = now
+        try {
+            startActivity(android.content.Intent(this, PauseActivity::class.java)
+                .putExtra(PauseActivity.EXTRA_PKG, pkg)
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP))
+        } catch (_: Exception) { /* can't show the pause: let the app open */ }
+    }
+
+    private fun limitHit(pkg: String) {
+        performGlobalAction(GLOBAL_ACTION_HOME)
+        showCard(pkg, null, "Daily limit (${Mindful.limit(this, pkg)} min) used up \u00B7 back tomorrow")
+    }
+
+    /** Every 15s with no lock: the app in front ran out of its limit or its pause time. */
+    private val mindfulTick = object : Runnable {
+        override fun run() {
+            val pkg = fgPkg
+            val screenOn = (getSystemService(POWER_SERVICE) as android.os.PowerManager).isInteractive
+            if (screenOn && !LockManager.isLocked(this@BlockerService) && pkg != packageName && pkg !in homes &&
+                LockManager.isBlocked(this@BlockerService, pkg)
+            ) {
+                val g = Mindful.graceEnd(this@BlockerService, pkg)
+                when {
+                    Mindful.overLimit(this@BlockerService, pkg) -> limitHit(pkg)
+                    Mindful.pauseOn(this@BlockerService) && g > 0 && System.currentTimeMillis() >= g -> {
+                        performGlobalAction(GLOBAL_ACTION_HOME)
+                        showCard(pkg, null, "Your time is up")
+                    }
+                }
+            }
+            ui.postDelayed(this, 15_000L)
         }
     }
 
@@ -173,7 +219,7 @@ class BlockerService : AccessibilityService() {
     ).toInt()
 
     /** Full-screen "disabled" card in the maatram.co.in look. Tap Go home to close. */
-    private fun showCard(pkg: String, label: String?) {
+    private fun showCard(pkg: String, label: String?, note: String? = null) {
         val pm = packageManager
         val settingsPage = label != null || pkg in LockManager.GUARDED
         val info = try { pm.getApplicationInfo(pkg, 0) } catch (_: Exception) { null }
@@ -194,7 +240,7 @@ class BlockerService : AccessibilityService() {
                 setTextColor(0xFFECEFEE.toInt())
             }
             val sub = TextView(this).apply {
-                text = "Hard Lock · $minsLeft min left"
+                text = note ?: "Hard Lock · $minsLeft min left"
                 typeface = regular; textSize = 15f; gravity = Gravity.CENTER
                 setTextColor(0xFF9CC0B2.toInt())
             }
