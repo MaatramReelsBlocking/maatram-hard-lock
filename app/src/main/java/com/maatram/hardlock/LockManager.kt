@@ -66,6 +66,8 @@ object LockManager {
         val ms = remaining(p.getLong(KEY_END, 0L), p.getLong(KEY_END_RT, 0L), sameBoot,
             SystemClock.elapsedRealtime(), System.currentTimeMillis(), if (b >= 0) p.getLong(KEY_LEFT, 0L) else 0L)
         if (b >= 0 && !sameBoot && ms > 0L) anchor(ctx, ms)   // first look after a reboot: count down from here
+        // Finished: drop the checkpoint so a later reboot can't revive the lock.
+        if (sameBoot && ms == 0L && p.getLong(KEY_LEFT, 0L) > 0L) p.edit().putLong(KEY_LEFT, 0L).apply()
         return ms
     }
 
