@@ -196,27 +196,91 @@ private fun App() {
                     Offset(size.width * .14f, size.height * .78f), r2), r2, Offset(size.width * .14f, size.height * .78f))
             }
         ) {
-            // Ask for a review at most once a week (never mid-lock).
             val sp = remember { ctx.getSharedPreferences("MaatramLock", Context.MODE_PRIVATE) }
-            var askSurvey by remember {
-                mutableStateOf(System.currentTimeMillis() - sp.getLong("survey_shown_at", 0L) > 7 * 86_400_000L)
-            }
-            if (askSurvey && !locked) {
-                LaunchedEffect(Unit) { sp.edit().putLong("survey_shown_at", System.currentTimeMillis()).apply() }
-                val close = { askSurvey = false }
-                AlertDialog(
-                    onDismissRequest = close, containerColor = BG, shape = CARD_SHAPE,
-                    modifier = Modifier.border(1.dp, STROKE, CARD_SHAPE),
-                    text = { SurveyBody(ctx) },
-                    confirmButton = { TextButton(onClick = close) { Text("Maybe later", color = DIM) } }
-                )
-            }
-            when {
-                locked -> LockedScreen(ctx, shield)
-                picking -> AppPicker(ctx, resumes) { picking = false }
-                else -> SetupScreen(ctx, shield, admin, battery, resumes, onPick = { picking = true }) { tick++ }
+            // First launch: Terms + Privacy must be ticked before the app opens.
+            var agreed by remember { mutableStateOf(sp.getString("terms_v", null) == TERMS_V) }
+            if (!agreed) {
+                ConsentScreen(ctx) {
+                    sp.edit().putString("terms_v", TERMS_V).putLong("terms_at", System.currentTimeMillis()).apply()
+                    agreed = true
+                }
+            } else {
+                // Ask for a review at most once a week (never mid-lock).
+                var askSurvey by remember {
+                    mutableStateOf(System.currentTimeMillis() - sp.getLong("survey_shown_at", 0L) > 7 * 86_400_000L)
+                }
+                if (askSurvey && !locked) {
+                    LaunchedEffect(Unit) { sp.edit().putLong("survey_shown_at", System.currentTimeMillis()).apply() }
+                    val close = { askSurvey = false }
+                    AlertDialog(
+                        onDismissRequest = close, containerColor = BG, shape = CARD_SHAPE,
+                        modifier = Modifier.border(1.dp, STROKE, CARD_SHAPE),
+                        text = { SurveyBody(ctx) },
+                        confirmButton = { TextButton(onClick = close) { Text("Maybe later", color = DIM) } }
+                    )
+                }
+                when {
+                    locked -> LockedScreen(ctx, shield)
+                    picking -> AppPicker(ctx, resumes) { picking = false }
+                    else -> SetupScreen(ctx, shield, admin, battery, resumes, onPick = { picking = true }) { tick++ }
+                }
             }
         }
+        }
+    }
+}
+
+// Same version tag as consent.js on maatram.co.in. Bump it when the terms change: everyone re-accepts once.
+private const val TERMS_V = "2026-10"
+
+/** First-launch gate: read the Terms + Privacy Policy, tick the box, then the app opens. Decline closes the app. */
+@Composable
+private fun ConsentScreen(ctx: Context, onAccept: () -> Unit) {
+    var ticked by remember { mutableStateOf(false) }
+    val open = { url: String ->
+        try { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } catch (_: Exception) {}
+    }
+    BackHandler { (ctx as? android.app.Activity)?.finish() }
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 28.dp),
+        verticalArrangement = Arrangement.Center
+    ) {
+        Card {
+            Column(Modifier.padding(22.dp)) {
+                Text("Before you start", color = INK, fontWeight = FontWeight.Bold, fontSize = 22.sp)
+                Spacer(Modifier.height(8.dp))
+                Text("Please read Maatram’s Terms of Service and Privacy Policy. You need to accept them to use Maatram.",
+                    color = DIM, fontSize = 15.sp)
+                Spacer(Modifier.height(18.dp))
+                listOf("Terms of Service" to "https://maatram.co.in/terms.html",
+                       "Privacy Policy" to "https://maatram.co.in/privacy.html").forEach { (label, url) ->
+                    Row(
+                        Modifier.fillMaxWidth().padding(bottom = 8.dp).clip(RoundedCornerShape(14.dp))
+                            .border(1.dp, Color(0x1FFFFFFF), RoundedCornerShape(14.dp))
+                            .clickable { open(url) }.heightIn(min = 52.dp).padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(label, color = INK, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        Text("↗", color = ACCENT)
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Color(0x0AFFFFFF))
+                        .clickable { ticked = !ticked }.padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(checked = ticked, onCheckedChange = { ticked = it },
+                        colors = CheckboxDefaults.colors(checkedColor = ACCENT, checkmarkColor = BG, uncheckedColor = DIM))
+                    Text("I have read and agree to the Terms of Service and Privacy Policy.", color = INK, fontSize = 15.sp)
+                }
+                Spacer(Modifier.height(18.dp))
+                PrimaryButton("Accept and continue", enabled = ticked, modifier = Modifier.fillMaxWidth()) { if (ticked) onAccept() }
+                Spacer(Modifier.height(10.dp))
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    GhostButton("Decline and close") { (ctx as? android.app.Activity)?.finish() }
+                }
+            }
         }
     }
 }

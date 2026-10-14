@@ -11,8 +11,8 @@ android {
         applicationId = "com.maatram.hardlock"
         minSdk = 26
         targetSdk = 34
-        versionCode = 26
-        versionName = "2.6.3-beta"
+        versionCode = 27
+        versionName = "2.6.4-beta"
     }
 
     // One fixed signing key for every build, so a new APK installs over the old one (no uninstall,
