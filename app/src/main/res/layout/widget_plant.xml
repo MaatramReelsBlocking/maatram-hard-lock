@@ -36,7 +36,7 @@
                 android:layout_weight="1"
                 android:maxLines="1"
                 android:ellipsize="end"
-                android:textColor="#EAFFF6"
+                android:textColor="#4A1F2E"
                 android:textSize="13sp"
                 android:textStyle="bold" />
 
@@ -44,7 +44,7 @@
                 android:id="@+id/w_timer"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textColor="#FFFFFF"
+                android:textColor="#8E1F4A"
                 android:textSize="18sp"
                 android:textStyle="bold"
                 android:visibility="gone" />
@@ -56,7 +56,7 @@
             android:layout_height="wrap_content"
             android:maxLines="1"
             android:ellipsize="end"
-            android:textColor="#2FE38F"
+            android:textColor="#C2185B"
             android:textSize="12sp" />
     </LinearLayout>
 </FrameLayout>

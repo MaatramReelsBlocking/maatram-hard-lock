@@ -100,7 +100,8 @@ object SakuraArt {
         val b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val c = Canvas(b)
         c.clipPath(Path().apply { addRoundRect(RectF(0f, 0f, w.toFloat(), h.toFloat()), 60f, 60f, Path.Direction.CW) })
-        draw(c, w.toFloat(), h.toFloat(), firstFrame(ctx), g, leaves)
+        // Widget sits on a light pink card: keep the tree bright, skip the night tint.
+        draw(c, w.toFloat(), h.toFloat(), firstFrame(ctx), 0.6f + 0.4f * g, leaves, hour = 12f)
         return b
     }
 }
