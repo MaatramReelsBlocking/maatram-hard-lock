@@ -32,6 +32,13 @@ class BlockerService : AccessibilityService() {
 
     private val ui = Handler(Looper.getMainLooper())
     private var card: View? = null
+    private var cardAt = 0L
+    /** Home (or Recents, power menu) pressed: clear the card. Skips the echo of our own GLOBAL_ACTION_HOME. */
+    private val homeKey = object : android.content.BroadcastReceiver() {
+        override fun onReceive(c: android.content.Context?, i: android.content.Intent?) {
+            if (System.currentTimeMillis() - cardAt > 1500L) hideCard.run()
+        }
+    }
     private var foreground = false
     private var guardPkg = ""
     // Home-screen apps are never blocked (an older pick could include one: HOME would loop).
@@ -53,6 +60,10 @@ class BlockerService : AccessibilityService() {
         keepAlive(LockManager.isLocked(this))
         ui.removeCallbacks(linkTick); ui.post(linkTick)
         ui.removeCallbacks(mindfulTick); ui.postDelayed(mindfulTick, 15_000L)
+        try { unregisterReceiver(homeKey) } catch (_: Exception) {}
+        androidx.core.content.ContextCompat.registerReceiver(this, homeKey,
+            android.content.IntentFilter(android.content.Intent.ACTION_CLOSE_SYSTEM_DIALOGS),
+            androidx.core.content.ContextCompat.RECEIVER_EXPORTED)
     }
 
     /** A lock just started or got longer: arm the notification and block the app already on screen. */
@@ -219,7 +230,7 @@ class BlockerService : AccessibilityService() {
         TypedValue.COMPLEX_UNIT_DIP, v.toFloat(), resources.displayMetrics
     ).toInt()
 
-    /** Full-screen "disabled" card in the maatram.co.in look. Tap Go home to close. */
+    /** Full-screen "disabled" card in the maatram.co.in look. Go home or the Home button closes it; outside a lock it also fades after 10s. */
     private fun showCard(pkg: String, label: String?, note: String? = null) {
         val pm = packageManager
         val settingsPage = label != null || pkg in LockManager.GUARDED
@@ -272,14 +283,20 @@ class BlockerService : AccessibilityService() {
             )
             (getSystemService(WINDOW_SERVICE) as WindowManager).addView(box, lp)
             card = box
+            cardAt = System.currentTimeMillis()
+            // Outside a lock the app is already closed and the card is only a notice; don't let it sit on Home.
+            if (!LockManager.isLocked(this)) ui.postDelayed(hideCard, 10_000L)
         } catch (_: Exception) { /* overlay optional; the app was already sent home */ }
     }
 
-    private val hideCard = Runnable {
-        try {
-            card?.let { (getSystemService(WINDOW_SERVICE) as WindowManager).removeView(it) }
-        } catch (_: Exception) {}
-        card = null
+    private val hideCard = object : Runnable {
+        override fun run() {
+            ui.removeCallbacks(this)
+            try {
+                card?.let { (getSystemService(WINDOW_SERVICE) as WindowManager).removeView(it) }
+            } catch (_: Exception) {}
+            card = null
+        }
     }
 
     override fun onInterrupt() {}
@@ -294,6 +311,7 @@ class BlockerService : AccessibilityService() {
     override fun onDestroy() {
         if (instance === this) instance = null
         ui.removeCallbacksAndMessages(null)
+        try { unregisterReceiver(homeKey) } catch (_: Exception) {}
         hideCard.run()
         super.onDestroy()
     }
