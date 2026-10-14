@@ -45,7 +45,12 @@ Outside a lock, for the apps you picked (`Mindful.kt`):
   the app until it's deactivated — and that screen is in Settings, which is
   guarded while locked.
 - **The lock is time-based and survives reboots and crashes.** It always ends on
-  its own (max 90 min).
+  its own (max 90 min). It runs on the phone's uptime, so changing the date or
+  time can't end it, even with a restart; time the phone is switched off
+  doesn't count.
+- **No shortcut off switch.** A lock won't start while the Shield is on an
+  accessibility shortcut (volume keys, accessibility button), since one press
+  would turn it off.
 
 **Top 10 games.** The app picker starts with a *Top 10 mobile games* card: **Lock all games** ticks every installed one (BGMI, Free Fire MAX, Call of Duty Mobile, Minecraft, Roblox, Clash of Clans, Clash Royale, Brawl Stars, Subway Surfers, Candy Crush; `Games.kt`), **Clear games** unticks them. During a lock the Shield sends a locked game straight home like any other app.
 

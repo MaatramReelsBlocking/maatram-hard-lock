@@ -70,6 +70,7 @@ class BlockerService : AccessibilityService() {
     private val linkTick = object : Runnable {
         override fun run() {
             Link.poll(this@BlockerService)
+            LockManager.checkpoint(this@BlockerService)
             ui.postDelayed(this, 60_000L)
         }
     }

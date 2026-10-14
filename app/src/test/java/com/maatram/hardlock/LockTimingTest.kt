@@ -27,6 +27,15 @@ class LockTimingTest {
         assertEquals(7 * min, LockManager.remaining(wall + 10 * min, 0L, true, up, wall + 3 * min))
     }
 
+    @Test fun afterRebootUsesCheckpointNotClock() {
+        // Clock moved 2 hours forward, then a reboot: the 7 minutes left at the last checkpoint still run.
+        assertEquals(7 * min, LockManager.remaining(wall + 10 * min, up + 10 * min, false, 1_000L, wall + 120 * min, 7 * min))
+        // Same boot: the uptime end wins over the checkpoint.
+        assertEquals(10 * min, LockManager.remaining(wall + 10 * min, up + 10 * min, true, up, wall, 7 * min))
+        // A cleared lock stays cleared.
+        assertEquals(0L, LockManager.remaining(0L, up + 10 * min, false, 1_000L, wall, 7 * min))
+    }
+
     @Test fun finishedLockIsZeroNotNegative() {
         assertEquals(0L, LockManager.remaining(wall + 10 * min, up + 10 * min, true, up + 11 * min, wall))
         assertEquals(0L, LockManager.remaining(wall, 0L, false, up, wall + min))

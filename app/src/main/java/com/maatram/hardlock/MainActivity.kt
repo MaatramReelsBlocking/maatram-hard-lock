@@ -391,7 +391,9 @@ private fun SetupScreen(
     var autostartDone by remember { mutableStateOf(prefs.getBoolean("autostart_opened", false)) }
     val keepRunning = battery && (autostart == null || autostartDone)
     // No lock until the Shield can survive "Clear all"; otherwise the lock silently dies.
-    val ready = shield && keepRunning && lockedCount > 0
+    // A shortcut would switch the Shield off with one press mid-lock.
+    val shortcut = remember(resumes) { LockManager.shieldOnShortcut(ctx) }
+    val ready = shield && !shortcut && keepRunning && lockedCount > 0
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(22.dp)
@@ -450,6 +452,7 @@ private fun SetupScreen(
             Text(
                 when {
                     !shield -> "Turn on Shield first"
+                    shortcut -> "Remove the Shield shortcut first"
                     !keepRunning -> "Finish step 3 first"
                     lockedCount == 0 -> "Choose apps to lock first"
                     else -> "Start Hard Lock · $minutes min"
@@ -463,7 +466,7 @@ private fun SetupScreen(
 
         // Finished steps disappear. If one is switched off later (Shield reset,
         // battery setting undone), only that step comes back under this heading.
-        if (!shield || !admin || !keepRunning) {
+        if (!shield || shortcut || !admin || !keepRunning) {
         Spacer(Modifier.height(22.dp))
         Text("Setup not complete", color = DANGER, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
         Spacer(Modifier.height(10.dp))
@@ -483,6 +486,19 @@ private fun SetupScreen(
         }
 
         if (!shield) Spacer(Modifier.height(12.dp))
+
+        if (shield && shortcut) {
+            StatusCard(
+                title = "Shield shortcut",
+                on = false,
+                onText = "",
+                offText = "Maatram Focus Shield is on an accessibility shortcut, which could switch it off mid-lock. In Accessibility, open Maatram Focus Shield and turn its shortcut off.",
+                button = "Open Accessibility"
+            ) {
+                ctx.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+            Spacer(Modifier.height(12.dp))
+        }
 
         // Step 2 — Device Admin (optional but recommended)
         if (!admin) StatusCard(
