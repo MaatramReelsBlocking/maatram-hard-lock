@@ -34,6 +34,10 @@ object LockManager {
         "com.miui.securitycenter",
         "com.samsung.android.sm",
         "com.samsung.android.lool",
+        // OEM battery managers: their per-app page can restrict Maatram and stop the Shield.
+        "com.miui.powerkeeper",
+        "com.coloros.safecenter",
+        "com.huawei.systemmanager",
         // The volume-key accessibility shortcut picker runs in the system ("android") package.
         "android",
     )
@@ -174,7 +178,14 @@ object LockManager {
             clear(ctx)
             // The end alarm died with the reboot, so LockEndReceiver never ran: say so now.
             if (planted) LockEvents.ended(ctx)
-        } else { anchor(ctx, rem); scheduleEnd(ctx, end); LockEvents.rearm(ctx) }
+        } else {
+            // Time the phone was off doesn't count (and a clock change doesn't move the lock), so the
+            // lock now ends rem from now: move the stored end, the growing tree and the alerts with it.
+            val resumed = System.currentTimeMillis() + rem
+            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putLong(KEY_END, resumed).apply()
+            Garden.follow(ctx, resumed)
+            anchor(ctx, rem); scheduleEnd(ctx, resumed); LockEvents.rearm(ctx)
+        }
     }
 
     private fun endIntent(ctx: Context): PendingIntent {

@@ -2,11 +2,14 @@ package com.maatram.hardlock
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.accessibilityservice.GestureDescription
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.pm.ServiceInfo
+import android.graphics.Path
 import android.graphics.PixelFormat
+import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Handler
@@ -16,6 +19,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityWindowInfo
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -53,7 +57,9 @@ class BlockerService : AccessibilityService() {
             // App switches only; TYPE_WINDOWS_CHANGED fired constantly for no gain.
             eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
             feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
-            flags = AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS
+            // Interactive windows: split-screen panes and picture-in-picture windows show up in `windows`.
+            flags = AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS or
+                AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
             notificationTimeout = 0L
         }
         instance = this
@@ -75,6 +81,7 @@ class BlockerService : AccessibilityService() {
             val pkg = rootInActiveWindow?.packageName?.toString() ?: return
             if (pkg != packageName && pkg !in homes && LockManager.isBlocked(this, pkg)) block(pkg)
         } catch (_: Exception) { /* no window to check */ }
+        sideWindows().firstOrNull()?.let { (pkg, w) -> closeSide(pkg, w, null) }
     }
 
     /** Linked devices: about once a minute, pick up a Hard Lock started on the website or in Chrome. */
@@ -144,8 +151,58 @@ class BlockerService : AccessibilityService() {
                     }
                 }
             }
+            // Not while our pause screen is up: the side app is waiting on it.
+            if (screenOn && !LockManager.isLocked(this@BlockerService) && pkg != packageName) {
+                for ((side, w) in sideWindows()) {
+                    val note = when {
+                        Mindful.overLimit(this@BlockerService, side) ->
+                            "Daily limit (${Mindful.limit(this@BlockerService, side)} min) used up \u00B7 back tomorrow"
+                        // A side window never passed the pause (or its minutes ran out).
+                        Mindful.pauseOn(this@BlockerService) &&
+                            System.currentTimeMillis() >= Mindful.graceEnd(this@BlockerService, side) -> "Your time is up"
+                        else -> continue
+                    }
+                    closeSide(side, w, note)
+                    break
+                }
+            }
             ui.postDelayed(this, 15_000L)
         }
+    }
+
+    /**
+     * Picked apps on screen but not in front: the other split-screen pane or a picture-in-picture
+     * window. Window events and [fgPkg] only follow the app in front, so these would run on unchecked.
+     */
+    private fun sideWindows(): List<Pair<String, AccessibilityWindowInfo>> = try {
+        windows.mapNotNull { w ->
+            val pkg = if (w.type == AccessibilityWindowInfo.TYPE_APPLICATION) w.root?.packageName?.toString() else null
+            if (pkg == null || pkg == fgPkg || pkg == packageName || pkg in homes || !LockManager.isBlocked(this, pkg)) null
+            else pkg to w
+        }
+    } catch (_: Exception) { emptyList() }
+
+    /**
+     * Picture-in-picture: dragged onto the dismiss target at the bottom of the screen. Split screen: leave
+     * it, then Home. The card waits until the gesture is done, or it would catch the drag.
+     */
+    private fun closeSide(pkg: String, w: AccessibilityWindowInfo, note: String?) {
+        if (w.isInPictureInPictureMode) {
+            val r = Rect().also { w.getBoundsInScreen(it) }
+            val dm = resources.displayMetrics
+            val drag = Path().apply {
+                moveTo(r.exactCenterX(), r.exactCenterY())
+                lineTo(dm.widthPixels / 2f, (dm.heightPixels - dp(40)).toFloat())
+            }
+            dispatchGesture(GestureDescription.Builder()
+                .addStroke(GestureDescription.StrokeDescription(drag, 0L, 800L)).build(), null, null)
+        } else {
+            if (windows.any { it.type == AccessibilityWindowInfo.TYPE_SPLIT_SCREEN_DIVIDER }) {
+                performGlobalAction(GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN)
+            }
+            ui.postDelayed({ performGlobalAction(GLOBAL_ACTION_HOME) }, 500L)
+        }
+        ui.postDelayed({ showCard(pkg, null, note) }, 1_200L)
     }
 
     /** Settings pages fill in a moment after opening, so look now and twice more. */

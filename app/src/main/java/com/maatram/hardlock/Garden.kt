@@ -37,6 +37,12 @@ object Garden {
         PlantWidget.refresh(ctx)
     }
 
+    /** The running lock's end moved (resumed after a reboot or a clock change): the growing tree ends with it. */
+    fun follow(ctx: Context, end: Long): Unit = synchronized(Garden) {
+        if (current(ctx) != null) p(ctx).edit().putLong("cur_end", end).apply()
+        PlantWidget.refresh(ctx)
+    }
+
     fun current(ctx: Context): Current? {
         val s = p(ctx)
         val end = s.getLong("cur_end", 0L)
