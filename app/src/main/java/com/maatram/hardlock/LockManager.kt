@@ -20,7 +20,7 @@ object LockManager {
     private const val KEY_END_RT = "lock_end_rt"    // end on the uptime clock (immune to clock changes)
     private const val KEY_BOOT = "lock_boot"        // boot the uptime end belongs to
     private const val KEY_LEFT = "lock_left"        // time left at the last checkpoint, for after a reboot
-    const val MAX_MINUTES = 90
+    const val MAX_MINUTES = 240
 
     // Settings-type apps. Never locked as a whole: while a lock runs, only their
     // pages that show "Maatram" (Shield toggle, App info / Force stop, Device

@@ -46,4 +46,9 @@ class LockTimingTest {
         assertEquals(cap, LockManager.remaining(wall + 10 * min, up + 10_000 * min, true, up, wall))
         assertEquals(LockManager.MAX_MINUTES * min, LockManager.remaining(wall + LockManager.MAX_MINUTES * min, 0L, false, up, wall))
     }
+
+    @Test fun inTheMoodLocksFit() {
+        assertEquals(240, LockManager.MAX_MINUTES)
+        assertEquals(listOf("90 min", "2 hr", "3 hr", "4 hr"), listOf(90, 120, 180, 240).map { chipLabel(it) })
+    }
 }

@@ -883,31 +883,37 @@ private fun MotivationCard(ctx: Context) {
     }
 }
 
+/** 5..90 min as "N min"; the 2, 3 and 4 hour "In the Mood" locks as "N hr". */
+internal fun chipLabel(m: Int) = if (m >= 120) "${m / 60} hr" else "$m min"
+
 @Composable
 private fun DurationChips(selected: Int, onPick: (Int) -> Unit) {
-    val opts = listOf(5, 15, 25, 45, 60, 90)
+    val groups = listOf(null to listOf(5, 15, 25, 45, 60, 90), "In the Mood" to listOf(120, 180, 240))
     Column {
-        opts.chunked(3).forEach { row ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                row.forEach { m ->
-                    val sel = m == selected
-                    Surface(
-                        color = if (sel) ACCENT else CARD,
-                        shape = PILL,
-                        border = if (sel) null else BorderStroke(1.dp, STROKE),
-                        modifier = Modifier.weight(1f).height(50.dp)
-                    ) {
-                        Box(Modifier.fillMaxSize().clickable { onPick(m) }, Alignment.Center) {
-                            Text(
-                                "$m min",
-                                color = if (sel) BG else INK,
-                                fontWeight = FontWeight.SemiBold, fontSize = 15.sp
-                            )
+        groups.forEach { (title, opts) ->
+            if (title != null) Text(title, color = DIM, fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
+            opts.chunked(3).forEach { row ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    row.forEach { m ->
+                        val sel = m == selected
+                        Surface(
+                            color = if (sel) ACCENT else CARD,
+                            shape = PILL,
+                            border = if (sel) null else BorderStroke(1.dp, STROKE),
+                            modifier = Modifier.weight(1f).height(50.dp)
+                        ) {
+                            Box(Modifier.fillMaxSize().clickable { onPick(m) }, Alignment.Center) {
+                                Text(
+                                    chipLabel(m),
+                                    color = if (sel) BG else INK,
+                                    fontWeight = FontWeight.SemiBold, fontSize = 15.sp
+                                )
+                            }
                         }
                     }
                 }
+                Spacer(Modifier.height(10.dp))
             }
-            Spacer(Modifier.height(10.dp))
         }
     }
 }
