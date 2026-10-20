@@ -86,8 +86,10 @@ class BlockerService : AccessibilityService() {
 
     /** Linked devices: about once a minute, pick up a Hard Lock started on the website or in Chrome. */
     private val linkTick = object : Runnable {
+        private var n = 0
         override fun run() {
             Link.poll(this@BlockerService)
+            if (n++ % 15 == 0) Link.pushUsage(this@BlockerService)   // screen time for the website's Stats, every ~15 min
             LockManager.checkpoint(this@BlockerService)
             ui.postDelayed(this, 60_000L)
         }

@@ -4,6 +4,9 @@ import android.content.Context
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
 import java.util.concurrent.Executors
 
 /**
@@ -82,6 +85,54 @@ object Link {
                     con.responseCode
                 } finally { con.disconnect() }
             } catch (_: Exception) {}
+        }
+    }
+
+    /** Social apps whose screen time goes to the website's Stats page. Nothing else about the phone is sent. */
+    private val USAGE_IDS = mapOf(
+        "com.instagram.android" to "instagram", "com.instagram.lite" to "instagram",
+        "com.snapchat.android" to "snapchat",
+        "com.zhiliaoapp.musically" to "tiktok", "com.ss.android.ugc.trill" to "tiktok",
+        "com.google.android.youtube" to "youtube",
+        "com.whatsapp" to "whatsapp", "com.whatsapp.w4b" to "whatsapp",
+        "com.twitter.android" to "other", "com.facebook.katana" to "other", "com.facebook.lite" to "other",
+        "com.reddit.frontpage" to "other", "com.instagram.barcelona" to "other",
+    )
+
+    /** Foreground milliseconds per package -> whole minutes per Stats app id; ids under a minute are left out. */
+    internal fun usageMinutes(ms: Map<String, Long>): Map<String, Int> =
+        ms.entries.filter { it.key in USAGE_IDS }
+            .groupBy({ USAGE_IDS.getValue(it.key) }, { it.value })
+            .mapValues { (it.value.sum() / 60_000L).toInt().coerceAtMost(1440) }
+            .filterValues { it >= 1 }
+
+    /**
+     * Sends today's screen time for the social apps to maatram.co.in so the Stats page fills itself in.
+     * Needs a link code and Usage access (Settings > Usage access); does nothing without them.
+     */
+    fun pushUsage(ctx: Context) {
+        val app = ctx.applicationContext
+        val c = code(app); if (!isCode(c)) return
+        val minutes = try {
+            val usm = app.getSystemService(Context.USAGE_STATS_SERVICE) as android.app.usage.UsageStatsManager
+            val start = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+            }.timeInMillis
+            usageMinutes(usm.queryAndAggregateUsageStats(start, System.currentTimeMillis()).mapValues { it.value.totalTimeInForeground })
+        } catch (_: Exception) { return }
+        if (minutes.isEmpty()) return
+        val day = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(System.currentTimeMillis())
+        io.execute {
+            try {
+                val con = (URL("https://maatram.co.in/api/usage").openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"; doOutput = true; connectTimeout = 8000; readTimeout = 8000
+                    setRequestProperty("Content-Type", "application/json")
+                }
+                try {
+                    con.outputStream.use { it.write(JSONObject().put("code", c).put("day", day).put("apps", JSONObject(minutes)).toString().toByteArray()) }
+                    con.responseCode
+                } finally { con.disconnect() }
+            } catch (_: Exception) { /* offline: the next push sends it */ }
         }
     }
 }

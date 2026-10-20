@@ -58,4 +58,12 @@ class LinkTest {
         assertNull(Link.linkedEnd(now + 30 * min, 0L, 30, now, 0L))                          // no server time
         assertEquals(now + LockManager.MAX_MINUTES * min, Link.linkedEnd(now + 3 * 1440 * min, now, 30, now, 0L))  // days away: capped
     }
+
+    @Test fun usageMinutes_groupsKnownAppsAndDropsTheRest() {
+        val m = Link.usageMinutes(mapOf(
+            "com.instagram.android" to 30 * 60_000L, "com.instagram.lite" to 15 * 60_000L,
+            "com.twitter.android" to 5 * 60_000L, "com.snapchat.android" to 40_000L,
+            "com.example.notes" to 99 * 60_000L))
+        assertEquals(mapOf("instagram" to 45, "other" to 5), m)
+    }
 }
