@@ -26,7 +26,9 @@ object ReelPill {
     private var wm: WindowManager? = null
 
     fun show(ctx: Context, n: Int) {
-        if (view != null) { update(n); return }
+        // Still on screen: just refresh the number. If Android dropped the view, add it again.
+        if (view?.isAttachedToWindow == true) { update(n); return }
+        hide()
         try {
             // Service context, not applicationContext: accessibility overlays must be added from the service's window manager.
             val app = ctx
@@ -82,7 +84,7 @@ object ReelPill {
 
     fun hide() {
         try {
-            view?.let { wm?.removeView(it) }
+            view?.let { wm?.removeView(it) }   // throws if already gone; that is fine
         } catch (_: Exception) {}
         view = null
         count = null
