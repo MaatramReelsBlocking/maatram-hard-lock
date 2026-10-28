@@ -52,7 +52,7 @@ jobs:
           sha256sum maatram-hardlock.apk > maatram-hardlock.apk.sha256
           cat maatram-hardlock.apk.sha256
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: maatram-hardlock-debug
           path: maatram-hardlock.apk
