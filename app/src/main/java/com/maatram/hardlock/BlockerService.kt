@@ -55,7 +55,7 @@ class BlockerService : AccessibilityService() {
         // Configure programmatically too — some OEMs ignore the XML.
         serviceInfo = AccessibilityServiceInfo().apply {
             // App switches only; TYPE_WINDOWS_CHANGED fired constantly for no gain.
-            eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+            eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or AccessibilityEvent.TYPE_VIEW_SCROLLED
             feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
             // Interactive windows: split-screen panes and picture-in-picture windows show up in `windows`.
             flags = AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS or
@@ -96,10 +96,16 @@ class BlockerService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        // Scroll events only feed the reel counter; keep them cheap and skip the lock checks.
+        if (event?.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
+            ReelTracker.onScroll(this, event, fgPkg)
+            return
+        }
         val locked = LockManager.isLocked(this)
         keepAlive(locked)
         val pkg = event?.packageName?.toString() ?: return
         if (pkg != "com.android.systemui" && "inputmethod" !in pkg) fgPkg = pkg
+        ReelTracker.sync(this, fgPkg)
         if (!locked) { mindful(pkg); return }
         // Only the exact app that came to the front. No launcher/Recents guessing:
         // on Xiaomi the launcher runs app-open animations, which looked like
@@ -362,6 +368,7 @@ class BlockerService : AccessibilityService() {
 
     // Turned off in Accessibility settings (or by the system) while a lock runs.
     override fun onUnbind(intent: android.content.Intent?): Boolean {
+        ReelPill.hide()
         LockEvents.shieldOff(this)
         return super.onUnbind(intent)
     }
@@ -372,6 +379,7 @@ class BlockerService : AccessibilityService() {
         ui.removeCallbacksAndMessages(null)
         try { unregisterReceiver(homeKey) } catch (_: Exception) {}
         hideCard.run()
+        ReelPill.hide()
         super.onDestroy()
     }
 
