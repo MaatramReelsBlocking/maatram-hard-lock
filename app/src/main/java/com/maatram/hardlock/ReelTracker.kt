@@ -2,17 +2,21 @@ package com.maatram.hardlock
 
 import android.content.Context
 import android.content.Intent
-import android.view.accessibility.AccessibilityEvent
+import android.os.Build
+import android.view.accessibility.AccessibilityNodeInfo
 import java.util.Calendar
 
 /**
  * Counts reels (short videos) watched in Instagram, YouTube, Facebook, Snapchat and X.
  *
- * Method: each swipe to the next reel fires a scroll event in the app. One swipe fires
- * several scroll events, so a new reel is counted only after [IDLE_MS] with no scroll.
- * Opening an app is NOT a reel; app switches and UI refreshes never count.
- * Limit: any scroll in those apps counts, so a scroll in comments or a feed can count too.
- * Resets every day (local time).
+ * Method: a reel is identified by its on-screen text (captions, account names, long labels).
+ * When that text changes in a tracked app, the user moved to a new reel and the count goes up.
+ * Likes and other short counters are ignored because only long text is compared.
+ * Several events fire per swipe, so the count waits [IDLE_MS] between reels.
+ * Opening an app sets the baseline and does not count. Resets every day (local time).
+ *
+ * Limit: apps that show little text on a reel (or ads with none) can miss a swipe, and a
+ * feed or comments screen with changing text can add extra counts.
  */
 object ReelTracker {
     val APPS = mapOf(
@@ -23,30 +27,62 @@ object ReelTracker {
         "com.twitter.android" to "X",
     )
     const val IDLE_MS = 800L
+    private const val CHECK_EVERY_MS = 300L
+    private const val MIN_TEXT = 12
     private const val PREFS = "ReelCount"
 
-    private var lastScrollAt = 0L
+    private var lastApp = ""
+    private var baseline: Set<String> = emptySet()
+    private var lastCountAt = 0L
+    private var lastCheckAt = 0L
 
-    /** Pure rule, unit tested: a scroll starts a new reel only after a quiet gap. */
-    fun startsNewReel(lastScrollAt: Long, now: Long): Boolean = now - lastScrollAt > IDLE_MS
+    /** Pure rule, unit tested: a new reel starts only after a quiet gap. */
+    fun startsNewReel(lastCountAt: Long, now: Long): Boolean = now - lastCountAt > IDLE_MS
 
-    /** Called for every scroll event from the accessibility service. */
-    fun onScroll(ctx: Context, event: AccessibilityEvent, fgPkg: String) {
-        if (event.packageName?.toString() != fgPkg || fgPkg !in APPS) return
-        if (LockManager.isLocked(ctx)) return
-        // Ignore scroll events that did not move the list (some apps send zero-delta events).
-        if (android.os.Build.VERSION.SDK_INT >= 29 && event.scrollDeltaY == 0 && event.fromIndex == event.toIndex) return
+    /** Pure rule, unit tested: two or more long texts changed means a different reel. */
+    fun isNewReel(old: Set<String>, new: Set<String>): Boolean = (new - old).size + (old - new).size >= 2
+
+    /** Called for scroll and content-change events from the accessibility service. */
+    fun onActivity(ctx: Context, root: AccessibilityNodeInfo?, fgPkg: String) {
+        if (fgPkg !in APPS || LockManager.isLocked(ctx)) return
         val now = System.currentTimeMillis()
-        val isNew = startsNewReel(lastScrollAt, now)
-        lastScrollAt = now
-        if (!isNew) return
-        val n = bump(ctx)
-        ReelPill.update(n)
+        if (now - lastCheckAt < CHECK_EVERY_MS) return
+        lastCheckAt = now
+        val now2 = fingerprint(root)
+        if (now2.isEmpty()) return
+        if (baseline.isEmpty()) { baseline = now2; return }
+        if (!isNewReel(baseline, now2) || !startsNewReel(lastCountAt, now)) return
+        lastCountAt = now
+        baseline = now2
+        ReelPill.update(bump(ctx))
     }
 
     /** Shows the pill while a tracked app is in front, hides it otherwise. Runs on window changes. */
     fun sync(ctx: Context, fgPkg: String) {
+        if (fgPkg != lastApp) { lastApp = fgPkg; baseline = emptySet() }
         if (fgPkg in APPS && !LockManager.isLocked(ctx)) ReelPill.show(ctx, count(ctx)) else ReelPill.hide()
+    }
+
+    /** Long visible texts on screen: captions, account names, labels. Short counters are skipped. */
+    private fun fingerprint(root: AccessibilityNodeInfo?): Set<String> {
+        val out = HashSet<String>()
+        fun walk(n: AccessibilityNodeInfo?, depth: Int) {
+            if (n == null || depth > 14 || out.size > 80) return
+            val t = (n.text ?: n.contentDescription)?.toString()?.trim()
+            if (t != null && t.length >= MIN_TEXT && n.isVisibleToUser) out.add(t)
+            for (i in 0 until n.childCount) {
+                val child = n.getChild(i)
+                walk(child, depth + 1)
+                if (Build.VERSION.SDK_INT < 33) recycleNode(child)
+            }
+        }
+        walk(root, 0)
+        return out
+    }
+
+    @Suppress("DEPRECATION")
+    private fun recycleNode(n: AccessibilityNodeInfo?) {
+        n?.recycle()
     }
 
     fun count(ctx: Context): Int {
