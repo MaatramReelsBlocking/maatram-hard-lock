@@ -28,7 +28,8 @@ object ReelPill {
     fun show(ctx: Context, n: Int) {
         if (view != null) { update(n); return }
         try {
-            val app = ctx.applicationContext
+            // Service context, not applicationContext: accessibility overlays must be added from the service's window manager.
+            val app = ctx
             fun dp(v: Int) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v.toFloat(), app.resources.displayMetrics).toInt()
             val icon = ImageView(app).apply {
                 setImageResource(R.drawable.ic_reel_mascot)
@@ -69,7 +70,10 @@ object ReelPill {
             view = pill
             count = text
             wm = manager
-        } catch (_: Exception) { /* overlay optional: blocking and counting still work */ }
+        } catch (e: Exception) {
+            // Overlay is optional (blocking and counting still work), but log it so a failure is visible.
+            android.util.Log.w("ReelPill", "pill not shown", e)
+        }
     }
 
     fun update(n: Int) {
