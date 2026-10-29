@@ -58,9 +58,20 @@ object ReelTracker {
     }
 
     /** Shows the pill while a tracked app is in front, hides it otherwise. Runs on window changes. */
-    fun sync(ctx: Context, fgPkg: String) {
-        if (fgPkg != lastApp) { lastApp = fgPkg; baseline = emptySet() }
-        if (fgPkg in APPS && !LockManager.isLocked(ctx)) ReelPill.show(ctx, count(ctx)) else ReelPill.hide()
+    fun sync(ctx: Context, eventPkg: String) {
+        if (eventPkg in APPS) {
+            if (eventPkg != lastApp) { lastApp = eventPkg; baseline = emptySet() }
+            if (LockManager.isLocked(ctx)) ReelPill.hide() else ReelPill.show(ctx, count(ctx))
+            return
+        }
+        // Only a real switch to another launchable app hides the pill. Popups and permission
+        // dialogs from other packages (no launcher icon) leave it alone, so it doesn't vanish mid-reel.
+        if (lastApp.isNotEmpty() && eventPkg != ctx.packageName &&
+            ctx.packageManager.getLaunchIntentForPackage(eventPkg) != null
+        ) {
+            android.util.Log.d("ReelPill", "hide: switched to $eventPkg")
+            lastApp = ""; baseline = emptySet(); ReelPill.hide()
+        }
     }
 
     /** Long visible texts on screen: captions, account names, labels. Short counters are skipped. */

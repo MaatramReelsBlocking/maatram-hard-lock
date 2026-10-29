@@ -69,6 +69,7 @@ object ReelPill {
             }
             val manager = app.getSystemService(Context.WINDOW_SERVICE) as WindowManager
             manager.addView(pill, lp)
+            android.util.Log.d("ReelPill", "added, count=$n")
             view = pill
             count = text
             wm = manager
@@ -83,6 +84,7 @@ object ReelPill {
     }
 
     fun hide() {
+        android.util.Log.d("ReelPill", "remove requested, attached=${view?.isAttachedToWindow}")
         try {
             view?.let { wm?.removeView(it) }   // throws if already gone; that is fine
         } catch (_: Exception) {}

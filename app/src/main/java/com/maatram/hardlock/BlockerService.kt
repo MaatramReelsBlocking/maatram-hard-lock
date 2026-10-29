@@ -107,7 +107,7 @@ class BlockerService : AccessibilityService() {
         keepAlive(locked)
         val pkg = event?.packageName?.toString() ?: return
         if (pkg != "com.android.systemui" && "inputmethod" !in pkg) fgPkg = pkg
-        ReelTracker.sync(this, fgPkg)
+        ReelTracker.sync(this, pkg)
         if (!locked) { mindful(pkg); return }
         // Only the exact app that came to the front. No launcher/Recents guessing:
         // on Xiaomi the launcher runs app-open animations, which looked like
