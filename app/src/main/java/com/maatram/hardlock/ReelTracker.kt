@@ -39,8 +39,8 @@ object ReelTracker {
     /** Pure rule, unit tested: a new reel starts only after a quiet gap. */
     fun startsNewReel(lastCountAt: Long, now: Long): Boolean = now - lastCountAt > IDLE_MS
 
-    /** Pure rule, unit tested: two or more long texts changed means a different reel. */
-    fun isNewReel(old: Set<String>, new: Set<String>): Boolean = (new - old).size + (old - new).size >= 2
+    /** Pure rule, unit tested: two or more new long texts on screen means a different reel. One changed label does not. */
+    fun isNewReel(old: Set<String>, new: Set<String>): Boolean = (new - old).size >= 2
 
     /** Called for scroll and content-change events from the accessibility service. */
     fun onActivity(ctx: Context, root: AccessibilityNodeInfo?, fgPkg: String) {
